@@ -48,6 +48,8 @@ export { runPiTurn, piTurnResponse, type PiTurnHandle, type PiTurnSpec } from ".
 export * from "./observability.ts";
 export * from "./model-catalog.ts";
 export { subscriptionControlsResponse, subscriptionBrowserResponse } from "./web-subscription-http.ts";
+// Local agent connections (§8.2): Claude Code / Antigravity status + controls.
+export * from "./local-agents.ts";
 export { sessionCost } from "./pricing.ts";
 export { claudeCodeInstallationResponse } from "./claude-code.ts";
 // The custom endpoint module (registers into piModels() + probes for models).
