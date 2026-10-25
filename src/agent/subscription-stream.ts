@@ -5,8 +5,10 @@ import { NATIVE_SUBSCRIPTIONS, type NativeSubscriptionScope } from "../core/cont
 import { nativeSubscriptionId, nativeSubscriptionBackgroundAllowed, subscriptionScope, subscriptionScopeCurrent, subscriptionAdmissionScope, subscriptionLease, subscriptionAbortController, subscriptionDenial } from "./subscription-bridge.ts";
 import { markUnadmittedUsage, type SubscriptionDispatchLifecycle } from "./subscription-request-cycle.ts";
 import { capturePreparedBackgroundPayload } from "./background-capture.ts";
+import { isLocalAgentProvider, localAgentError } from "./local-agents/index.ts";
 
 export function nativeSubscriptionError(provider: string, message: string): string {
+	if (isLocalAgentProvider(provider)) return localAgentError(provider, message);
 	const label = NATIVE_SUBSCRIPTIONS.find((p) => p.logicalId === provider)?.label ?? "Subscription";
 	const suffix = " No API-key fallback was used.";
 	if (/background/i.test(message)) return `${label} background use is off in this app. Enable it in Providers to run this work.${suffix}`;
