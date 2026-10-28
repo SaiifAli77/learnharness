@@ -23,12 +23,13 @@ git checkout main && git merge <tag>   # fix conflicts, commit
 git push origin main
 ```
 
-Then re-run: Actions -> fork-sync -> Run workflow. (If you pushed the merge yourself, the workflow sees `main` already contains the tag and just builds and releases.)
+Then re-run: Actions -> Fork sync -> Run workflow. (If you pushed the merge yourself, the workflow sees `main` already contains the tag and just builds and releases.)
 
 ## One-time setup
 
 - Add repository secret `FORK_PUSH_TOKEN`: a fine-grained PAT for this repo with Contents and Workflows write (upstream merges may change workflow files, which the default token cannot push).
-- In Settings -> Actions, disable upstream's `release.yml` and `notify-website.yml` workflows in the fork. Leave `fork-sync` enabled.
+- Enable Actions on the fork first: Actions tab -> "I understand my workflows, go ahead and enable them".
+- Disable upstream's release workflows in the fork: in the Actions tab select each of "Desktop release" (`release.yml`) and "Notify website of public desktop release" (`notify-website.yml`), then "..." -> "Disable workflow". Or run `gh workflow disable release.yml --repo saiifali77/learnharness` and `gh workflow disable notify-website.yml --repo saiifali77/learnharness`. Leave "Fork sync" enabled.
 
 ## Known limit
 
