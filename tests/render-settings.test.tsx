@@ -104,8 +104,9 @@ describe("Providers settings-label typography", () => {
 			assert.ok(settings.includes(`<span class="font-prose text-(length:--lh-prose-size) text-foreground">${label}</span>`), `${label}: settings sans label`);
 			assert.ok(setup.includes(`<span class="font-ui text-xs text-foreground">${label}</span>`), `${label}: unchanged setup label`);
 		}
-		assert.equal((settings.match(/>Connect<\/button>/g) ?? []).length, 3);
-		assert.equal((setup.match(/>Connect<\/button>/g) ?? []).length, 3);
+		// ChatGPT, Copilot and Grok, plus the Claude Code and Antigravity local-agent rows.
+		assert.equal((settings.match(/>Connect<\/button>/g) ?? []).length, 5);
+		assert.equal((setup.match(/>Connect<\/button>/g) ?? []).length, 5);
 	});
 });
 
