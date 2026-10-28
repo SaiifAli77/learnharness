@@ -51,6 +51,8 @@ Future teaching sessions can read the graph instead of starting from scratch. Pr
 
 Add your provider API key and choose your models, then start a session with what you want to understand. LearnHarness supports 30+ provider options, including OpenAI, Anthropic, Google, DeepSeek, and OpenRouter. Optional dictation and web search use separate service keys.
 
+Already pay for a Claude or Google AI plan? Under Providers → Subscriptions, LearnHarness can use the [Claude Code](https://code.claude.com/docs/en/setup) or [Antigravity](https://antigravity.google/docs/ide/extensions) installation you have signed into on this computer. Those programs keep their own sign-in, and your plan's limits and terms apply.
+
 All three platforms support in-app updates.
 
 **Dictation:** Create a [Deepgram API key](https://console.deepgram.com/) with the **Member role or higher** ([required for token minting](https://developers.deepgram.com/reference/auth/tokens/grant)) and add it under **Settings → Providers → Dictation**. Choose the language below the key; **Multilingual** supports automatic recognition and mixed-language speech. A `403 Insufficient permissions` error during token minting can indicate an insufficient key role.
