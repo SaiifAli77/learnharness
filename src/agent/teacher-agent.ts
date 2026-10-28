@@ -17,6 +17,7 @@ import {
 import { practiceTools, type PracticeToolContext } from "./tools/practice.ts";
 import { healToolRecord, withArgumentHeal } from "./tools/heal.ts";
 import { sendToUserTool } from "./tools/send-to-user.ts";
+import { usesSendToUser, withDeliveryNudge } from "./claude-delivery.ts";
 import { quizInputObject, quizInputProblems } from "../core/question-core.ts";
 import { QUESTION_TOOLS, type EnabledTools } from "../core/pending.ts";
 import { toLlmMessages, nativeInputCause, PRACTICE_PROBLEM_TOOL } from "../core/native-messages.ts";
@@ -181,9 +182,11 @@ function baseAgentOptions(kind: AgentKind, opts: AgentBuildOptions, tools: Agent
 	// ("practice" is not a ModelRole) honest about that.
 	const engine = opts.engine ?? piEngineFor(kind as "prober" | "teacher");
 	const stopper = makeQuestionStopper(kind);
-	const systemPrompt = opts.promptSwitches
+	const viaSendToUser = usesSendToUser(engine.model.id, opts.tools);
+	const basePrompt = opts.promptSwitches
 		? composeInstructions(kind, opts.promptSwitches)
 		: composedInstructions[kind]!;
+	const systemPrompt = viaSendToUser ? withDeliveryNudge(basePrompt) : basePrompt;
 	// Debug recorder (owner, 2026-10-04): raw provider events when
 	// LH_PROVIDER_EVENTS=1 and the caller handed a chatId; undefined is
 	// the normal no-observer path (tests, env-off).
@@ -202,7 +205,7 @@ function baseAgentOptions(kind: AgentKind, opts: AgentBuildOptions, tools: Agent
 			// transport. Explicit test registries remain caller-owned.
 			tools: [
 				...tools,
-				...(opts.tools === undefined && engine.model.id.toLowerCase().includes("claude")
+				...(viaSendToUser
 					? [withArgumentHeal(sendToUserTool)]
 					: []),
 			],

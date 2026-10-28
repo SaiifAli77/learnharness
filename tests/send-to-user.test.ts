@@ -36,6 +36,7 @@ after(() => {
 });
 
 const { sendToUserTool } = await import("../src/agent/tools/send-to-user.ts");
+const { withDeliveryNudge } = await import("../src/agent/claude-delivery.ts");
 const { createProberAgent, createTeacherAgent, createPracticeAgent, composeInstructions } = await import("../src/agent/teacher-agent.ts");
 const { SEND_TO_USER_TOOL, activeProblemOf, asAgentMessages, newUserMessage, sendToUserText, toLlmMessages, userFacingTextOf } = await import("../src/core/native-messages.ts");
 const { coverageOf, messageFingerprint, messageViewLines, teacherProseBlocks } = await import("../src/core/coverage.ts");
@@ -102,8 +103,10 @@ describe("send_to_user model gate", () => {
 					assert.equal(output!.description, sendToUserTool.description);
 					assert.equal(typeof output!.prepareArguments, "function", "standard argument healing is wired");
 				}
-				assert.equal(agent.state.systemPrompt, composeInstructions(kind as keyof typeof factories));
-				assert.ok(!agent.state.systemPrompt.includes(SEND_TO_USER_TOOL), "no added prompt instructions");
+				// Only the delivery rule (claude-delivery.ts) is added, and only with the tool.
+				const base = composeInstructions(kind as keyof typeof factories);
+				assert.equal(agent.state.systemPrompt, enabled ? withDeliveryNudge(base) : base);
+				if (!enabled) assert.ok(!agent.state.systemPrompt.includes(SEND_TO_USER_TOOL), "no added prompt instructions");
 			}
 		});
 	}
