@@ -113,6 +113,7 @@ jobs:
           fi
 
       - name: Package version must match the tag
+        id: version
         if: steps.upstream.outputs.needed == 'true'
         env:
           TAG: ${{ steps.upstream.outputs.tag }}
@@ -188,14 +189,31 @@ jobs:
           assets=(dist/*.AppImage dist/latest-linux.yml)
           # Only present for targets with a separate block map file.
           for f in dist/*.blockmap; do if [[ -e "$f" ]]; then assets+=("$f"); fi; done
+          # A GitHub fork copies upstream's tags, so $TAG may already exist
+          # pointing at upstream's commit; `gh release create --target`
+          # silently reuses an existing tag. Retarget it to the fork's merge
+          # commit first. This uses github.token (not the PAT) so the tag
+          # move does not trigger upstream's release.yml (v* tag trigger).
+          target=(--target "$sha")
+          if tag_obj=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" --jq '.object.type + " " + .object.sha' 2>/dev/null); then
+            read -r type obj <<< "$tag_obj"
+            if [[ "$type" == "tag" ]]; then
+              obj=$(gh api "repos/$GITHUB_REPOSITORY/git/tags/$obj" --jq .object.sha)
+            fi
+            if [[ "$obj" != "$sha" ]]; then
+              echo "Moving existing tag $TAG from $obj to $sha"
+              gh api -X PATCH "repos/$GITHUB_REPOSITORY/git/refs/tags/$TAG" -f sha="$sha" -F force=true >/dev/null
+            fi
+            target=(--verify-tag)
+          fi
           gh release create "$TAG" "${assets[@]}" \
             --repo "$GITHUB_REPOSITORY" \
-            --target "$sha" \
+            "${target[@]}" \
             --title "${TAG#v}" \
             --notes "Upstream $TAG + local agent connections (PR #151)"
 
       - name: Report failed checks
-        if: failure() && steps.upstream.outputs.needed == 'true' && steps.merge.outcome == 'success' && steps.push.outcome == 'skipped'
+        if: failure() && steps.upstream.outputs.needed == 'true' && steps.merge.outcome == 'success' && steps.version.outcome != 'failure' && steps.push.outcome == 'skipped'
         env:
           TAG: ${{ steps.upstream.outputs.tag }}
         run: |
