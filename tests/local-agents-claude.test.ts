@@ -131,3 +131,21 @@ test("thinking levels map to --effort; off disables thinking", () => {
 	assert.deepEqual(claudeEffort("minimal"), { args: ["--effort", "low"], env: {} });
 	assert.deepEqual(claudeEffort("xhigh"), { args: ["--effort", "xhigh"], env: {} });
 });
+
+test("a call blocked by beforeToolCall (the delivery guard's path) returns to the CLI as a normal error result", { timeout: 20_000 }, async () => {
+	const before = executions;
+	const engine = piEngineForSpec({ provider: "claude-code", id: "claude-haiku-4-5", thinkingLevel: "low" }, false);
+	const blocked = new Agent({
+		sessionId: "chat-blocked",
+		initialState: { systemPrompt: SYSTEM, model: engine.model, thinkingLevel: engine.level, tools: [lookup], messages: [] },
+		streamFn: engine.streamFn,
+		beforeToolCall: async () => ({ block: true, reason: "Blocked before it ran." }),
+	});
+	await blocked.prompt("please use the tool");
+	const result = blocked.state.messages.find((m): m is ToolResultMessage => m.role === "toolResult")!;
+	assert.equal(result.isError, true);
+	assert.equal(result.content[0]!.type === "text" && result.content[0]!.text, "Blocked before it ran.");
+	assert.equal(executions, before, "the tool never executed");
+	assert.deepEqual(logEntries("tool_result").at(-1)!.result, { content: [{ type: "text", text: "Blocked before it ran." }], isError: true });
+	assert.equal(findRun("chat-blocked"), undefined);
+});
