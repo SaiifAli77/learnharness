@@ -1,0 +1,215 @@
+name: Fork sync
+
+# Keeps this fork (upstream + the local-agent connections from PR #151)
+# current: when upstream publishes a release, merge that tag into main,
+# run upstream's release gates, build the Linux AppImage, push main, and
+# publish a fork release that electron-updater (owner: saiifali77) reads.
+# See FORK.md. Nothing is pushed or released unless every gate passes.
+
+on:
+  schedule:
+    - cron: "23 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+# One sync at a time; never cancel one that is mid-publish.
+concurrency:
+  group: fork-sync
+  cancel-in-progress: false
+
+env:
+  NEXT_TELEMETRY_DISABLED: "1"
+  UPSTREAM: amosblomqvist/learnharness
+  # gh API calls (releases, issues) use the workflow token; pushing main
+  # uses FORK_PUSH_TOKEN via the checkout below.
+  GH_TOKEN: ${{ github.token }}
+  RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+jobs:
+  sync:
+    name: Sync upstream release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      # Upstream merges can modify .github/workflows, which GITHUB_TOKEN may
+      # not push, so main is checked out and later pushed with a PAT
+      # (fine-grained: contents + workflows write on this repo).
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.FORK_PUSH_TOKEN }}
+
+      # Issue helper shared by the failure paths: open an issue unless an
+      # open one with the same title already exists.
+      - name: Define issue helper
+        run: |
+          cat > "$RUNNER_TEMP/issue.sh" <<'EOF'
+          open_issue() {
+            local title="$1" body="$2"
+            if gh issue list --repo "$GITHUB_REPOSITORY" --state open --limit 200 --json title --jq '.[].title' | grep -Fxq -- "$title"; then
+              echo "Open issue already exists: $title"
+            else
+              gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body "$body"
+            fi
+          }
+          EOF
+
+      - name: Find upstream's latest published release
+        id: upstream
+        run: |
+          set -euo pipefail
+          tag=$(gh api "repos/$UPSTREAM/releases/latest" --jq .tag_name)
+          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.]+)?$ ]]; then
+            echo "::error::Unexpected upstream tag: $tag"
+            exit 1
+          fi
+          echo "Upstream latest release: $tag"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Fork already has release $tag; nothing to do."
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "needed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # The tag lands in refs/upstream-tags/, never in the fork's tag
+      # namespace: the fork's own release creates its tag on the merge commit.
+      - name: Merge upstream tag into main
+        id: merge
+        if: steps.upstream.outputs.needed == 'true'
+        env:
+          TAG: ${{ steps.upstream.outputs.tag }}
+        run: |
+          set -euo pipefail
+          source "$RUNNER_TEMP/issue.sh"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add upstream "https://github.com/$UPSTREAM.git"
+          git fetch --no-tags upstream "refs/tags/$TAG:refs/upstream-tags/$TAG"
+          sha=$(git rev-parse "refs/upstream-tags/$TAG^{commit}")
+          if git merge-base --is-ancestor "$sha" HEAD; then
+            echo "main already contains $TAG ($sha); continuing to build."
+            exit 0
+          fi
+          if ! git merge --no-ff -m "Merge upstream $TAG" "$sha"; then
+            files=$(git diff --name-only --diff-filter=U || true)
+            git merge --abort
+            open_issue "Fork sync: merge conflict with upstream $TAG" "Merging upstream \`$TAG\` ($sha) into \`main\` conflicted. Nothing was pushed.
+
+          Conflicted files:
+          $(printf '%s\n' "$files" | sed 's/^/- `/; s/$/`/')
+
+          Resolve locally (fetch the upstream tag, merge, fix, push), then re-run the workflow. See FORK.md.
+
+          Run: $RUN_URL"
+            exit 1
+          fi
+
+      - name: Package version must match the tag
+        if: steps.upstream.outputs.needed == 'true'
+        env:
+          TAG: ${{ steps.upstream.outputs.tag }}
+        run: |
+          set -euo pipefail
+          source "$RUNNER_TEMP/issue.sh"
+          version=$(node -p 'require("./package.json").version')
+          if [[ "$version" != "${TAG#v}" ]]; then
+            open_issue "Fork sync: version mismatch for upstream $TAG" "package.json says \`$version\` after merging \`$TAG\`. Nothing was pushed.
+
+          Run: $RUN_URL"
+            echo "::error::package.json version $version != ${TAG#v}"
+            exit 1
+          fi
+
+      # Gates mirror upstream release.yml: quality job, then the Linux
+      # package job's build sequence.
+      - uses: actions/setup-node@v7
+        if: steps.upstream.outputs.needed == 'true'
+        with:
+          node-version: "26"
+          cache: npm
+      - name: Install dependencies
+        if: steps.upstream.outputs.needed == 'true'
+        run: npm ci
+      - name: Typecheck
+        if: steps.upstream.outputs.needed == 'true'
+        run: npm run typecheck
+      - name: Tests
+        if: steps.upstream.outputs.needed == 'true'
+        run: npm test
+      - name: Lint
+        if: steps.upstream.outputs.needed == 'true'
+        run: npm run lint
+      - name: Native renderer tests on this OS
+        if: steps.upstream.outputs.needed == 'true'
+        run: npx electron --import tsx --test tests/pdf-native-render.test.ts tests/pdf-ops.test.ts tests/svg-native-render.test.ts tests/browser-service.test.ts
+        env:
+          NODE_ENV: test
+          ELECTRON_RUN_AS_NODE: "1"
+      - name: Build app
+        if: steps.upstream.outputs.needed == 'true'
+        run: npm run build
+      # Check the fresh trace before any static copying/curation.
+      - name: Smoke provider runtime
+        if: steps.upstream.outputs.needed == 'true'
+        run: node scripts/smoke-provider-runtime.mjs
+      - name: Build server
+        if: steps.upstream.outputs.needed == 'true'
+        run: node scripts/build-server.mjs
+      - name: Smoke server (Electron)
+        if: steps.upstream.outputs.needed == 'true'
+        run: node scripts/smoke-server.mjs --electron
+      # AppImage embeds its block map, so dist/ holds the AppImage and
+      # latest-linux.yml (no separate .blockmap file).
+      - name: Package Linux AppImage
+        if: steps.upstream.outputs.needed == 'true'
+        run: npx electron-builder --linux AppImage --x64 --publish never
+
+      - name: Push main
+        id: push
+        if: steps.upstream.outputs.needed == 'true'
+        run: git push origin HEAD:main
+
+      - name: Publish fork release
+        id: release
+        if: steps.upstream.outputs.needed == 'true'
+        env:
+          TAG: ${{ steps.upstream.outputs.tag }}
+        run: |
+          set -euo pipefail
+          sha=$(git rev-parse HEAD)
+          assets=(dist/*.AppImage dist/latest-linux.yml)
+          # Only present for targets with a separate block map file.
+          for f in dist/*.blockmap; do if [[ -e "$f" ]]; then assets+=("$f"); fi; done
+          gh release create "$TAG" "${assets[@]}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$sha" \
+            --title "${TAG#v}" \
+            --notes "Upstream $TAG + local agent connections (PR #151)"
+
+      - name: Report failed checks
+        if: failure() && steps.upstream.outputs.needed == 'true' && steps.merge.outcome == 'success' && steps.push.outcome == 'skipped'
+        env:
+          TAG: ${{ steps.upstream.outputs.tag }}
+        run: |
+          source "$RUNNER_TEMP/issue.sh"
+          open_issue "Fork sync: checks failed for upstream $TAG" "A check failed for upstream \`$TAG\` after merging into the workflow's checkout. Nothing was pushed and no release was created.
+
+          Run: $RUN_URL"
+
+      - name: Report failed publish
+        if: failure() && (steps.push.outcome == 'failure' || steps.release.outcome == 'failure')
+        env:
+          TAG: ${{ steps.upstream.outputs.tag }}
+        run: |
+          source "$RUNNER_TEMP/issue.sh"
+          open_issue "Fork sync: publish failed for upstream $TAG" "Checks passed for \`$TAG\` but pushing main or creating the release failed. Re-running the workflow is safe (the merge is idempotent).
+
+          Run: $RUN_URL"
