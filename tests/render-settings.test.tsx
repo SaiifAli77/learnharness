@@ -18,7 +18,7 @@ import { KeysSection } from "../components/settings/keys-section.tsx";
 import { KeyboardSection } from "../components/settings/keyboard-section.tsx";
 import type { GraphSettings } from "../src/core/index.ts";
 import { SettingsDialogBody, SettingsDialogProvider } from "../components/settings/settings-dialog.tsx";
-import { KEYBOARD_ACTIONS } from "../src/core/index.ts";
+import { KEYBOARD_ACTIONS, LOCAL_AGENTS } from "../src/core/index.ts";
 import { DictationLanguageSetting } from "../components/dictation-language.tsx";
 import { SettingsMenuTrigger } from "../components/settings/controls.tsx";
 import { SubscriptionConnections } from "../components/settings/subscription-connections.tsx";
@@ -101,6 +101,12 @@ describe("Providers settings-label typography", () => {
 		const settings = renderToStaticMarkup(<SubscriptionConnections />);
 		const setup = renderToStaticMarkup(<SubscriptionConnections setup />);
 		for (const label of ["ChatGPT", "GitHub Copilot", "Grok"]) {
+			assert.ok(settings.includes(`<span class="font-prose text-(length:--lh-prose-size) text-foreground">${label}</span>`), `${label}: settings sans label`);
+			assert.ok(setup.includes(`<span class="font-ui text-xs text-foreground">${label}</span>`), `${label}: unchanged setup label`);
+		}
+		// Local-agent rows carry the runtime in the label, e.g. "Claude Code (claude)".
+		for (const agent of LOCAL_AGENTS) {
+			const label = `${agent.label} (${agent.runtime})`;
 			assert.ok(settings.includes(`<span class="font-prose text-(length:--lh-prose-size) text-foreground">${label}</span>`), `${label}: settings sans label`);
 			assert.ok(setup.includes(`<span class="font-ui text-xs text-foreground">${label}</span>`), `${label}: unchanged setup label`);
 		}

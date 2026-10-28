@@ -118,19 +118,19 @@ export function LocalAgentUIProvider({ children }: { children: React.ReactNode }
 
 function rowAction(status: LocalAgentStatus): string { return status.enabled ? "Manage…" : "Connect"; }
 
-export function LocalAgentConnection({ providerId }: { providerId: LocalAgentProviderId }) {
+export function LocalAgentConnection({ providerId, labelClassName }: { providerId: LocalAgentProviderId; labelClassName?: string }) {
 	const ui = useContext(Context), descriptor = localAgentDescriptor(providerId)!;
 	const status = ui.statuses.find((s) => s.providerId === providerId) ?? emptyLocalAgentStatus(providerId);
 	const state = status.connected ? (status.plan ? `${status.plan} plan` : "Connected") : status.enabled ? (!status.installed ? "Not installed" : !status.signedIn ? "Not signed in" : "Unavailable") : undefined;
 	return <div className="flex flex-col gap-2" data-testid={`${providerId}-connection`}>
-		<ConnectionRow label={`${descriptor.label} (${descriptor.runtime})`} action={rowAction(status)} disabled={ui.busy} onAction={() => ui.open(providerId)}>
+		<ConnectionRow label={`${descriptor.label} (${descriptor.runtime})`} labelClassName={labelClassName} action={rowAction(status)} disabled={ui.busy} onAction={() => ui.open(providerId)}>
 			{state && <span className="font-ui text-[11px] text-muted-foreground" data-testid={`${providerId}-state`}>{state}</span>}
 		</ConnectionRow>
 	</div>;
 }
 
-export function LocalAgentConnections() {
-	return <div className="space-y-3" data-testid="local-agent-connections">{LOCAL_AGENTS.map((agent) => <LocalAgentConnection key={agent.providerId} providerId={agent.providerId} />)}</div>;
+export function LocalAgentConnections({ labelClassName }: { labelClassName?: string }) {
+	return <div className="space-y-3" data-testid="local-agent-connections">{LOCAL_AGENTS.map((agent) => <LocalAgentConnection key={agent.providerId} providerId={agent.providerId} labelClassName={labelClassName} />)}</div>;
 }
 
 export function LocalAgentBackgroundAccess({ provider }: { provider: string | undefined }) {
