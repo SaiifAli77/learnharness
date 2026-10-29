@@ -19,6 +19,10 @@ Upstream v0.4.0 ships its own Claude Code integration, which collides with PR #1
 
 Its tests are skipped by `scripts/fork-test.mjs`, which Fork sync runs instead of `npm test`; upstream test files stay unmodified. If a sync fails on those tests after upstream renames or adds Claude Code tests, update the lists at the top of that script.
 
+## Node-closing essays
+
+Before the teacher leaves a plan node, the learner writes a free-recall essay explaining it, graded strictly, with gaps repaired and re-checked before moving on. Fork-only: in multiple-choice mode `createTeacherTools` (`src/agent/tools.ts`) also hands the teacher `explain` alongside `quiz` (free mode and the prober are unchanged), and `src/agent/prompts/teacher/32-node-essay.md` reserves `explain` for the closing essay. `tests/fork-node-essay.test.ts` guards it, and `scripts/fork-test.mjs` skips one upstream test that asserts choice mode holds only `quiz`.
+
 ## When a "Fork sync" issue appears
 
 The workflow opened an issue: a merge conflict, a version mismatch, failed checks, or a failed publish. Nothing was pushed. To resolve a conflict:
