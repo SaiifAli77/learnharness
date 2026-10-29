@@ -50,7 +50,8 @@ function analyse() {
 			n.expression.text === "useMemo" &&
 			n.arguments[0] &&
 			(ts.isArrowFunction(n.arguments[0]) || ts.isFunctionExpression(n.arguments[0])) &&
-			n.arguments[0].getText(sf).includes("messages.map(")
+			// The fork's fill hook renders `messages.slice(hidden).map(`.
+			/messages(\.slice\([^)]*\))?\.map\(/.test(n.arguments[0].getText(sf))
 		) {
 			calls.push(n);
 		}
@@ -60,7 +61,7 @@ function analyse() {
 	assert.equal(
 		calls.length,
 		1,
-		`expected exactly one useMemo(...) containing messages.map( inside Chat, found ${calls.length}`,
+		`expected exactly one useMemo(...) containing messages(.slice(..)).map( inside Chat, found ${calls.length}`,
 	);
 	const call = calls[0]!;
 	const callback = call.arguments[0]!;

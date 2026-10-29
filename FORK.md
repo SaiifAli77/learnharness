@@ -23,6 +23,10 @@ Its tests are skipped by `scripts/fork-test.mjs`, which Fork sync runs instead o
 
 Before the teacher leaves a plan node, the learner writes a free-recall essay explaining it, graded strictly, with gaps repaired and re-checked before moving on. Fork-only: in multiple-choice mode `createTeacherTools` (`src/agent/tools.ts`) also hands the teacher `explain` alongside `quiz` (free mode and the prober are unchanged), and `src/agent/prompts/teacher/32-node-essay.md` reserves `explain` for the closing essay. `tests/fork-node-essay.test.ts` guards it, and `scripts/fork-test.mjs` skips one upstream test that asserts choice mode holds only `quiz`.
 
+## Opening long chats fast
+
+A long chat used to SSR and hydrate every transcript block before showing anything (measured on a 44-block, ~120k px chat: server ~1.8 s, content at ~2.9 s, settled ~3.4 s). Now the transcript first renders only the newest 6 messages (server and first client render agree, so hydration matches), then older messages are prepended in transition batches of 4 until the full transcript is rendered, so the settled page is identical. `components/transcript-fill.ts` holds the hook; `components/chat.tsx` renders `messages.slice(hiddenOldest)` and keeps the absolute index `mi`. The full transcript is forced at once by a URL hash at mount (message deep links), `hashchange`/`popstate`, and the in-chat Find opening. `tests/fork-transcript-fill.test.ts` guards it, and `tests/fork-transcript-memo.test.ts` accepts `messages.slice(..).map(` as the memoized block.
+
 ## When a "Fork sync" issue appears
 
 The workflow opened an issue: a merge conflict, a version mismatch, failed checks, or a failed publish. Nothing was pushed. To resolve a conflict:

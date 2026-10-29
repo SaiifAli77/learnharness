@@ -56,6 +56,7 @@ import type { PlanBlockData } from "@/src/core";
 import { QuestionDock } from "@/components/question-dock";
 import { SessionFind } from "@/components/session-find";
 import { SessionMessageNavigation } from "@/components/session-navigation";
+import { useTranscriptFill } from "@/components/transcript-fill";
 import { PracticeDock } from "@/components/practice-dock";
 import { ThinkingCard, type PracticeThinkingData } from "@/components/practice-cards";
 import { GraphContextCard, type GraphContextData } from "@/components/graph-context-card";
@@ -261,6 +262,8 @@ export function Chat({
 	const sessionFindScopeRef = useRef<HTMLDivElement | null>(null);
 	const scrollContextRef = useRef<StickToBottomContext | null>(null);
 	const sourceTextParts = useMemo(() => firstSourceTextParts(messages), [messages]);
+	// Fork: oldest messages not rendered yet while a long chat opens (components/transcript-fill.ts).
+	const hiddenOldest = useTranscriptFill(messages.length);
 
 	// The reattach settled terminal → the sync-and-continue seam (below).
 	setReattachSettled(() => reattachSettledRef.current());
@@ -1403,8 +1406,8 @@ export function Chat({
 								/>
 							)}
 
-							{/* Fork: memoized so typing in the composer/docks doesn't re-render the whole transcript (deps checked by tests/fork-transcript-memo.test.ts). */}
-							{useMemo(() => messages.map((m, mi) =>
+							{/* Fork: memoized so typing in the composer/docks doesn't re-render the whole transcript (deps checked by tests/fork-transcript-memo.test.ts). `mi` stays the ABSOLUTE index: the 4th map arg is never passed, so its default applies. */}
+							{useMemo(() => messages.slice(hiddenOldest).map((m, _i, _all, mi = _i + hiddenOldest) =>
 								m.role === "user" && isSubagentSteer(m) ? (
 									// Sub-agent delivery (wake-pipeline steer): NO message bubble — the
 									// artifact card sits in the transcript column directly, full width
@@ -1616,7 +1619,7 @@ export function Chat({
 									</Message>
 									)}
 								</Fragment>
-							)), [messages, status, sourceTextParts, phases, setPlanOpen])}
+							)), [messages, hiddenOldest, status, sourceTextParts, phases, setPlanOpen])}
 
 							{/* THE placeholder, ACTION-gated (owner, optimistic round
 							    3, 2026-10-02): spinner + shimmered Thinking… from the
