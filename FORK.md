@@ -1,17 +1,23 @@
 # This fork
 
-`saiifali77/learnharness` is upstream ([amosblomqvist/learnharness](https://github.com/amosblomqvist/learnharness)) plus the Claude Code / Antigravity local agent connections (upstream PR #151, pinned at `f07238c`), a Providers-page label fix for those rows, and an updater feed pointing at this fork's releases (`electron-builder.yml`, `owner: saiifali77`).
+`saiifali77/learnharness` is upstream ([amosblomqvist/learnharness](https://github.com/amosblomqvist/learnharness)) plus the Claude Code / Antigravity local agent connections (upstream PR #151, pinned at `f07238c`; upstream's own Claude Code integration from v0.4.0 is switched off in favour of it), a Providers-page label fix for those rows, and an updater feed pointing at this fork's releases (`electron-builder.yml`, `owner: saiifali77`).
 
 ## Auto-sync
 
 `.github/workflows/fork-sync.yml` runs every 6 hours and on demand. It asks GitHub for upstream's latest published release. If this fork already has a release with that tag, it stops. Otherwise it:
 
 1. merges the upstream tag into `main` (a merge commit; upstream tags are not copied into this fork),
-2. runs upstream's release gates (typecheck, tests, lint, native renderer tests, build, smoke tests),
+2. runs upstream's release gates (typecheck, tests via `scripts/fork-test.mjs`, lint, native renderer tests, build, smoke tests),
 3. builds the Linux AppImage,
 4. pushes `main` and publishes a release with the same tag, containing the AppImage and `latest-linux.yml` (the AppImage embeds its block map).
 
 The installed app's updater reads only this fork's releases. Nothing is pushed or released if any step fails.
+
+## Upstream's Claude Code integration is off
+
+Upstream v0.4.0 ships its own Claude Code integration, which collides with PR #151's `claude-code` provider. The fork keeps PR #151's connection and switches upstream's off with three edits: `CLAUDE_CODE_PROVIDER` is renamed to `"claude-code-official"` (`src/core/contracts/claude-code.ts`), the provider is not registered in `src/agent/models.ts`, and the "External CLI" settings group is removed from `components/settings/keys-section.tsx`. Upstream's files stay in place.
+
+Its tests are skipped by `scripts/fork-test.mjs`, which Fork sync runs instead of `npm test`; upstream test files stay unmodified. If a sync fails on those tests after upstream renames or adds Claude Code tests, update the lists at the top of that script.
 
 ## When a "Fork sync" issue appears
 

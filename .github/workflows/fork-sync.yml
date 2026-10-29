@@ -142,9 +142,9 @@ jobs:
       - name: Typecheck
         if: steps.upstream.outputs.needed == 'true'
         run: npm run typecheck
-      - name: Tests
+      - name: Tests (fork runner)
         if: steps.upstream.outputs.needed == 'true'
-        run: npm test
+        run: node scripts/fork-test.mjs
       - name: Lint
         if: steps.upstream.outputs.needed == 'true'
         run: npm run lint
