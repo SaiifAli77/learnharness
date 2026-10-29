@@ -17,8 +17,6 @@ import packageMetadata from "../../package.json" with { type: "json" };
 import { chatGPTModel } from "./chatgpt-bridge.ts";
 import { chatGPTStream } from "./chatgpt-stream.ts";
 import type { ChatGPTDispatchLifecycle } from "./chatgpt-request-cycle.ts";
-import { createClaudeCodeProvider } from "./claude-code/provider.ts";
-import { streamClaudeCode } from "./claude-code/stream.ts";
 import { nativeSubscriptionId, nativeSubscriptionModel } from "./subscription-bridge.ts";
 import { nativeSubscriptionStream } from "./subscription-stream.ts";
 import { isLocalAgentProvider, localAgentModel, localAgentStream } from "./local-agents/index.ts";
@@ -91,7 +89,7 @@ export function piModels() {
 				? { ...provider, ...lazyApi(() => import("@earendil-works/pi-ai/api/bedrock-converse-stream")) }
 				: provider);
 		}
-		collection.setProvider(createClaudeCodeProvider(streamClaudeCode));
+		// Upstream's Claude Code provider is not registered: the fork's local-agent Claude connection is used instead.
 	}
 	providerSource?.sync(collection);
 	return collection;

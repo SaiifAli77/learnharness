@@ -1,4 +1,5 @@
-export const CLAUDE_CODE_PROVIDER = "claude-code";
+// The fork keeps PR #151's "claude-code" provider; this id keeps upstream's integration from matching it.
+export const CLAUDE_CODE_PROVIDER = "claude-code-official";
 
 /** Installation/version only. Never an authentication, quota, or billing verdict. */
 export interface ClaudeCodeStatus {
