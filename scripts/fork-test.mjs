@@ -41,6 +41,10 @@ const SKIPPED_TESTS = [
 	["providerKeyPresent(\"claude-code\") requires both explicit opt-in and executable presence"],
 	// asserts choice mode holds only `quiz`; the fork's teacher also holds `explain` for node essays
 	["createTeacherTools: {research: false} removes exactly research; unknown keys are no-ops"],
+	// fork graph links carry ?full=1 (full transcript render, see FORK.md "Opening long chats fast")
+	["chooses the first recorded non-empty anchor for that source"],
+	// same: the href now has ?full=1 before the hash
+	["encodes path/hash values and round-trips the actual message ID"],
 ];
 
 const escape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

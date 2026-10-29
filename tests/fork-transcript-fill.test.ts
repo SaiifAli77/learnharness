@@ -7,16 +7,23 @@ import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { parseHTML } from "linkedom";
-import { TRANSCRIPT_BATCH, TRANSCRIPT_TAIL, useTranscriptFill } from "../components/transcript-fill.ts";
+import { TRANSCRIPT_TAIL, useTranscriptFill } from "../components/transcript-fill.ts";
 import { kbdEventForAction } from "../src/core/index.ts";
+import { propositionSessionHref } from "../src/core/session-navigation.ts";
 
 const globals = globalThis as Record<string, unknown>;
 let restore: (() => void) | undefined;
 let dispose: (() => Promise<void>) | undefined;
 
-async function fixture(total: number, hash = "") {
+type Scroller = { scrollHeight: number; clientHeight: number; scrollTop: number } & EventTarget;
+
+async function fixture(total: number, hash = "", opts: { full?: boolean; scroller?: Scroller } = {}) {
 	const dom = parseHTML("<html><body><div id='root'></div></body></html>");
 	const win = dom.window as unknown as EventTarget & { location?: unknown };
+	// Manual idle scheduler: the background fill runs only when the test says.
+	const idle: Array<() => void> = [];
+	Object.defineProperty(win, "requestIdleCallback", { configurable: true, value: (fn: () => void) => idle.push(fn) });
+	Object.defineProperty(win, "cancelIdleCallback", { configurable: true, value: () => {} });
 	const location = { hash };
 	Object.defineProperty(win, "location", { configurable: true, value: location });
 	const previous = new Map<string, PropertyDescriptor | undefined>();
@@ -39,13 +46,13 @@ async function fixture(total: number, hash = "") {
 	const seen: number[] = [];
 	let currentTotal = total;
 	function Harness({ total }: { total: number }) {
-		const hidden = useTranscriptFill(total);
+		const hidden = useTranscriptFill(total, () => (opts.scroller as unknown as HTMLElement) ?? null, opts.full);
 		seen.push(hidden);
 		return null;
 	}
 	const render = (next: number) => act(async () => { currentTotal = next; root.render(React.createElement(Harness, { total: next })); });
 	await render(total);
-	const settle = (ms = 20) => act(async () => { await new Promise((r) => setTimeout(r, ms)); });
+	const settle = () => act(async () => { for (const run of idle.splice(0)) run(); await new Promise((r) => setTimeout(r, 5)); });
 	return {
 		seen, location, render, settle,
 		get hidden() { return seen[seen.length - 1]!; },
@@ -67,18 +74,48 @@ test("first render hides all but the newest TAIL messages (and nothing for short
 
 test("server render matches the first client render (deterministic from the count)", () => {
 	const seen: number[] = [];
-	function Harness() { seen.push(useTranscriptFill(40)); return null; }
+	function Harness() { seen.push(useTranscriptFill(40, () => null)); return null; }
 	renderToStaticMarkup(React.createElement(Harness));
 	assert.equal(seen[0], 40 - TRANSCRIPT_TAIL);
 });
 
-test("fills to zero in batches without ever growing", async () => {
+test("after mount it fills to zero in one step, not batches", async () => {
 	const f = await fixture(40);
-	for (let i = 0; i < 20 && f.hidden > 0; i++) await f.settle();
+	await f.settle();
 	assert.equal(f.hidden, 0);
-	const distinct = [...new Set(f.seen)];
-	assert.deepEqual(distinct, distinct.slice().sort((a, b) => b - a), "monotonically decreasing");
-	for (let i = 1; i < distinct.length; i++) assert.ok(distinct[i - 1]! - distinct[i]! <= TRANSCRIPT_BATCH);
+	assert.deepEqual([...new Set(f.seen)], [40 - TRANSCRIPT_TAIL, 0]);
+});
+
+test("the full option starts with nothing hidden (also on the server)", async () => {
+	const f = await fixture(40, "", { full: true });
+	assert.ok(f.seen.every((h) => h === 0));
+	const seen: number[] = [];
+	function Harness() { seen.push(useTranscriptFill(40, () => null, true)); return null; }
+	renderToStaticMarkup(React.createElement(Harness));
+	assert.equal(seen[0], 0);
+});
+
+test("scroll hold: a prepend keeps the reader's distance from the bottom", async () => {
+	const listeners = new Map<string, () => void>();
+	const el = {
+		scrollHeight: 1000, clientHeight: 400, scrollTop: 300,
+		addEventListener: (n: string, fn: () => void) => listeners.set(n, fn),
+		removeEventListener: (n: string) => listeners.delete(n),
+	} as unknown as Scroller;
+	const f = await fixture(40, "", { scroller: el });
+	// distance from bottom = 1000 - 400 - 300 = 300; the reader then scrolls.
+	el.scrollTop = 100; listeners.get("scroll")!(); // distance 500
+	// The fill grows the document by 5000 px: scrollTop must follow.
+	el.scrollHeight = 6000;
+	await f.settle();
+	assert.equal(f.hidden, 0);
+	assert.equal(el.scrollHeight - el.clientHeight - el.scrollTop, 500);
+});
+
+test("propositionSessionHref opens old messages with ?full=1, plain without a message", () => {
+	assert.equal(propositionSessionHref({ provenance: [{ chatId: "c", messageId: "m1" }] }, "c"), "/chat/c?full=1#message-m1");
+	assert.equal(propositionSessionHref({ provenance: [{ chatId: "c", messageId: "" }] }, "c"), "/chat/c");
+	assert.equal(propositionSessionHref({ provenance: [] }, "c"), "/chat/c");
 });
 
 test("the Find event fills everything at once", async () => {

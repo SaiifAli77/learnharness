@@ -217,6 +217,7 @@ export function Chat({
 	initialMessages,
 	initialError,
 	initialPrompt,
+	initialFullTranscript,
 	initiallyInFlight,
 	initiallyCompacting = false,
 	initialConfigured = false,
@@ -232,6 +233,8 @@ export function Chat({
 	 *  tag rides the header instead. */
 	kind?: "teach" | "practice";
 	initialPrompt?: string;
+	/** Fork: render the whole transcript on the first pass (graph links). */
+	initialFullTranscript?: boolean;
 	/** A teacher turn is running server-side but attached to no client
 	 * (navigated away mid-turn, returned while in flight). */
 	initiallyInFlight?: boolean;
@@ -263,7 +266,7 @@ export function Chat({
 	const scrollContextRef = useRef<StickToBottomContext | null>(null);
 	const sourceTextParts = useMemo(() => firstSourceTextParts(messages), [messages]);
 	// Fork: oldest messages not rendered yet while a long chat opens (components/transcript-fill.ts).
-	const hiddenOldest = useTranscriptFill(messages.length);
+	const hiddenOldest = useTranscriptFill(messages.length, useCallback(() => scrollContextRef.current?.scrollRef.current, []), initialFullTranscript);
 
 	// The reattach settled terminal → the sync-and-continue seam (below).
 	setReattachSettled(() => reattachSettledRef.current());
