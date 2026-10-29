@@ -1406,8 +1406,8 @@ export function Chat({
 								/>
 							)}
 
-							{/* Fork: memoized so typing in the composer/docks doesn't re-render the whole transcript (deps checked by tests/fork-transcript-memo.test.ts). `mi` stays the ABSOLUTE index: the 4th map arg is never passed, so its default applies. */}
-							{useMemo(() => messages.slice(hiddenOldest).map((m, _i, _all, mi = _i + hiddenOldest) =>
+							{/* Fork: memoized so typing in the composer/docks doesn't re-render the whole transcript (deps checked by tests/fork-transcript-memo.test.ts). Older messages render as null until components/transcript-fill.ts reveals them. */}
+							{useMemo(() => messages.map((m, mi) => mi < hiddenOldest ? null :
 								m.role === "user" && isSubagentSteer(m) ? (
 									// Sub-agent delivery (wake-pipeline steer): NO message bubble — the
 									// artifact card sits in the transcript column directly, full width
