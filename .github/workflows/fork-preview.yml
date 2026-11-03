@@ -1,0 +1,92 @@
+name: Fork conflict preview
+
+# Daily dry run: rebase the fork's patches onto upstream's current main in a
+# throwaway branch to find out early whether the next release will conflict.
+# Nothing is pushed, built or tested. See FORK.md.
+
+on:
+  schedule:
+    - cron: "41 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  UPSTREAM: amosblomqvist/learnharness
+  GH_TOKEN: ${{ github.token }}
+  RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+jobs:
+  preview:
+    name: Dry-run rebase onto upstream main
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Define issue helpers
+        run: |
+          cat > "$RUNNER_TEMP/issue.sh" <<'EOF2'
+          ISSUE_TITLE="Fork sync: upcoming conflict with upstream main"
+          issue_open() {
+            gh issue list --repo "$GITHUB_REPOSITORY" --state open --limit 200 --json title --jq '.[].title' | grep -Fxq -- "$ISSUE_TITLE"
+          }
+          open_issue() {
+            local body="$1"
+            if issue_open; then
+              echo "Open issue already exists: $ISSUE_TITLE"
+            else
+              gh issue create --repo "$GITHUB_REPOSITORY" --title "$ISSUE_TITLE" --body "$body"
+            fi
+          }
+          # Comment on and close every open issue with that exact title.
+          close_issue() {
+            local comment="$1" num
+            for num in $(gh issue list --repo "$GITHUB_REPOSITORY" --state open --limit 200 --json number,title --jq ".[] | select(.title == \"$ISSUE_TITLE\") | .number"); do
+              gh issue comment "$num" --repo "$GITHUB_REPOSITORY" --body "$comment"
+              gh issue close "$num" --repo "$GITHUB_REPOSITORY"
+            done
+          }
+          EOF2
+
+      - name: Dry-run rebase onto upstream main
+        run: |
+          set -euo pipefail
+          source "$RUNNER_TEMP/issue.sh"
+          git remote add upstream "https://github.com/$UPSTREAM.git"
+          git fetch --no-tags upstream refs/heads/main:refs/upstream/main
+          sha=$(git rev-parse refs/upstream/main)
+          if git merge-base --is-ancestor refs/upstream/main HEAD; then
+            echo "main already contains upstream main ($sha); nothing to preview."
+            close_issue "Upstream main $sha is already contained in the fork's main; nothing left to conflict."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          base=$(git merge-base HEAD refs/upstream/main)
+          # Throwaway branch; nothing here is ever pushed.
+          git switch -c preview
+          if ! git rebase --onto refs/upstream/main "$base"; then
+            files=$(git diff --name-only --diff-filter=U || true)
+            patch=$(git log -1 --format='%h %s' REBASE_HEAD || true)
+            git rebase --abort
+            open_issue "Rebasing the fork patches onto upstream \`main\` ($sha) conflicts while replaying: \`$patch\`. Nothing was pushed; this is a dry run.
+
+          Conflicted files:
+          $(printf '%s\n' "$files" | sed 's/^/- `/; s/$/`/')
+
+          You can resolve this now: rebase a scratch branch onto \`origin/main\` locally with rerere enabled. Git records the resolution, and the release-time rebase replays it automatically. See FORK.md, section \"When a Fork sync issue appears\".
+
+          Run: $RUN_URL"
+            exit 1
+          fi
+          echo "Rebase onto upstream main $sha is clean."
+          close_issue "Dry run onto upstream main $sha now rebases cleanly."
