@@ -22,7 +22,9 @@ export function messageIdFromHash(hash: string): string | null {
  * lexical order, selects the FIRST recorded message in this source. */
 export function propositionSessionHref(node: Pick<GraphNode, "provenance">, chatId: string): string {
 	const messageId = node.provenance.find((p) => p.chatId === chatId && p.messageId !== "")?.messageId;
-	return `/chat/${encodeURIComponent(chatId)}${messageId ? `#${encodeURIComponent(messageAnchorId(messageId))}` : ""}`;
+	// Fork: ?full=1 makes the chat page render the whole transcript at once
+	// (components/transcript-fill.ts), so an old message is there on arrival.
+	return `/chat/${encodeURIComponent(chatId)}${messageId ? `?full=1#${encodeURIComponent(messageAnchorId(messageId))}` : ""}`;
 }
 
 /** projectView's text-part identity is <native message ID>-t<text index>.
