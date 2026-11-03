@@ -24,6 +24,8 @@ import { AnsweredCard } from "@/components/answered-card";
 import { MalformedQuestion } from "@/components/malformed-question";
 import { artifactRenderers } from "@/components/artifacts";
 import { SubagentSteerCard } from "@/components/artifacts/steer-card";
+import { useForkChatActions, useForkSessionMermaid } from "@/components/fork-chat-contexts";
+import { forkRows, type ForkRowCache } from "@/components/fork-transcript-rows";
 import { ChatSessionComposer } from "@/components/composer";
 import { useEnterSubmits } from "@/components/enter-submits";
 import { blurAfterPointerClick } from "@/components/focus-hygiene";
@@ -556,6 +558,7 @@ export function Chat({
 	// color-coded dotted divider at each boundary; the header chip reads the
 	// session's current phase.
 	const phases = useMemo(() => phaseTimeline(messages), [messages]);
+	const forkRowCache = useRef<ForkRowCache | undefined>(undefined); // Fork: streamed-row reuse (components/fork-transcript-rows.ts).
 
 	const [composerDraftRevision, setComposerDraftRevision] = useState(0);
 	/* The composer draft ref is synchronous, so sends and dictation flushes
@@ -1255,20 +1258,10 @@ export function Chat({
 
 	return (
 		<ChatActionsContext.Provider
-			value={{
-				chatId,
-				syncFromServer,
-				sendText: (t: string) => {
-					void send({ type: "text", text: t });
-				},
-				openSetup: () => setSetupOpen(true),
-			}}
+			value={useForkChatActions(chatId, syncFromServer, send, setSetupOpen)}
 		>
 		<SessionMermaidContext.Provider
-			value={{
-				openMermaid: setMermaidFocus,
-				openFigure: (svg, inverted) => setFigureFocus({ svg, inverted }),
-			}}
+			value={useForkSessionMermaid(setMermaidFocus, setFigureFocus)}
 		>
 		<JobsContext.Provider value={jobs}>
 		{/* The session surface: the transcript column (header + scroller) and
@@ -1410,7 +1403,8 @@ export function Chat({
 								/>
 							)}
 
-							{messages.map((m, mi) =>
+							{/* Fork: memoized so typing in the composer/docks doesn't re-render the whole transcript, and unchanged rows are reused while a turn streams (components/fork-transcript-rows.ts; inputs checked by tests/fork-transcript-memo.test.ts). */}
+							{useMemo(() => forkRows(forkRowCache, messages, { phases, sourceTextParts }, { busy, status, compacting, setPlanOpen, draftRef, send }, (m, mi) =>
 								m.role === "user" && isSubagentSteer(m) ? (
 									// Sub-agent delivery (wake-pipeline steer): NO message bubble — the
 									// artifact card sits in the transcript column directly, full width
@@ -1629,7 +1623,7 @@ export function Chat({
 									</Message>
 									)}
 								</Fragment>
-							))}
+							)), [messages, nativeMessages, status, sourceTextParts, phases, setPlanOpen, busy, compacting, draftRef, send, forkRowCache])}
 
 							{/* THE placeholder, ACTION-gated (owner, optimistic round
 							    3, 2026-10-02): spinner + shimmered Thinking… from the

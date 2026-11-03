@@ -397,13 +397,13 @@ MessageResponse.displayName = "MessageResponse";
 
 /** Recovery is a tool-text presentation concern, not a shape/answer-data
  * transform. Ordinary assistant/user prose keeps MessageResponse unchanged. */
-export function ToolContentResponse({ children, ...props }: MessageResponseProps) {
+export const ToolContentResponse = memo(function ToolContentResponse({ children, ...props }: MessageResponseProps) {
   return (
     <MessageResponse {...props}>
       {typeof children === "string" ? repairMathForDisplay(children) : children}
     </MessageResponse>
   );
-}
+});
 
 export type MessageToolbarProps = ComponentProps<"div">;
 
