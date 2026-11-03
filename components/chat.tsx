@@ -1410,7 +1410,8 @@ export function Chat({
 								/>
 							)}
 
-							{messages.map((m, mi) =>
+							{/* Fork: memoized so typing in the composer/docks doesn't re-render the whole transcript (deps checked by tests/fork-transcript-memo.test.ts). */}
+							{useMemo(() => messages.map((m, mi) =>
 								m.role === "user" && isSubagentSteer(m) ? (
 									// Sub-agent delivery (wake-pipeline steer): NO message bubble — the
 									// artifact card sits in the transcript column directly, full width
@@ -1629,7 +1630,7 @@ export function Chat({
 									</Message>
 									)}
 								</Fragment>
-							))}
+							)), [messages, nativeMessages, status, sourceTextParts, phases, setPlanOpen, busy, compacting, draftRef, send])}
 
 							{/* THE placeholder, ACTION-gated (owner, optimistic round
 							    3, 2026-10-02): spinner + shimmered Thinking… from the
