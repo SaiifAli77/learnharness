@@ -59,6 +59,7 @@ import type { PlanBlockData } from "@/src/core";
 import { QuestionDock } from "@/components/question-dock";
 import { SessionFind } from "@/components/session-find";
 import { SessionMessageNavigation } from "@/components/session-navigation";
+import { useTranscriptFill } from "@/components/transcript-fill";
 import { PracticeDock } from "@/components/practice-dock";
 import { ThinkingCard, type PracticeThinkingData } from "@/components/practice-cards";
 import { GraphContextCard, type GraphContextData } from "@/components/graph-context-card";
@@ -220,6 +221,7 @@ export function Chat({
 	initialMessages,
 	initialError,
 	initialPrompt,
+	initialFullTranscript,
 	initiallyInFlight,
 	initiallyCompacting = false,
 	initialConfigured = false,
@@ -235,6 +237,8 @@ export function Chat({
 	 *  tag rides the header instead. */
 	kind?: "teach" | "practice";
 	initialPrompt?: string;
+	/** Fork: render the whole transcript on the first pass (graph links). */
+	initialFullTranscript?: boolean;
 	/** A teacher turn is running server-side but attached to no client
 	 * (navigated away mid-turn, returned while in flight). */
 	initiallyInFlight?: boolean;
@@ -265,6 +269,8 @@ export function Chat({
 	const sessionFindScopeRef = useRef<HTMLDivElement | null>(null);
 	const scrollContextRef = useRef<StickToBottomContext | null>(null);
 	const sourceTextParts = useMemo(() => firstSourceTextParts(messages), [messages]);
+	// Fork: oldest messages not rendered yet while a long chat opens (components/transcript-fill.ts).
+	const hiddenOldest = useTranscriptFill(messages.length, useCallback(() => scrollContextRef.current?.scrollRef.current, []), initialFullTranscript);
 
 	// The reattach settled terminal → the sync-and-continue seam (below).
 	setReattachSettled(() => reattachSettledRef.current());
@@ -1403,8 +1409,8 @@ export function Chat({
 								/>
 							)}
 
-							{/* Fork: memoized so typing in the composer/docks doesn't re-render the whole transcript, and unchanged rows are reused while a turn streams (components/fork-transcript-rows.ts; inputs checked by tests/fork-transcript-memo.test.ts). */}
-							{useMemo(() => forkRows(forkRowCache, messages, { phases, sourceTextParts }, { busy, status, compacting, setPlanOpen, draftRef, send }, (m, mi) =>
+							{/* Fork: memoized so typing in the composer/docks doesn't re-render the whole transcript, and unchanged rows are reused while a turn streams (components/fork-transcript-rows.ts; inputs checked by tests/fork-transcript-memo.test.ts). Older messages render as null until components/transcript-fill.ts reveals them. */}
+							{useMemo(() => forkRows(forkRowCache, messages, { phases, sourceTextParts }, { busy, status, compacting, hiddenOldest, setPlanOpen, draftRef, send }, (m, mi) => mi < hiddenOldest ? null :
 								m.role === "user" && isSubagentSteer(m) ? (
 									// Sub-agent delivery (wake-pipeline steer): NO message bubble — the
 									// artifact card sits in the transcript column directly, full width
@@ -1623,7 +1629,7 @@ export function Chat({
 									</Message>
 									)}
 								</Fragment>
-							)), [messages, nativeMessages, status, sourceTextParts, phases, setPlanOpen, busy, compacting, draftRef, send, forkRowCache])}
+							)), [messages, nativeMessages, hiddenOldest, status, sourceTextParts, phases, setPlanOpen, busy, compacting, draftRef, send, forkRowCache])}
 
 							{/* THE placeholder, ACTION-gated (owner, optimistic round
 							    3, 2026-10-02): spinner + shimmered Thinking… from the
