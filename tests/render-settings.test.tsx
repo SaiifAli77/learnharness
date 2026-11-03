@@ -18,7 +18,7 @@ import { KeysSection } from "../components/settings/keys-section.tsx";
 import { KeyboardSection } from "../components/settings/keyboard-section.tsx";
 import type { GraphSettings } from "../src/core/index.ts";
 import { SettingsDialogBody, SettingsDialogProvider } from "../components/settings/settings-dialog.tsx";
-import { KEYBOARD_ACTIONS } from "../src/core/index.ts";
+import { KEYBOARD_ACTIONS, LOCAL_AGENTS } from "../src/core/index.ts";
 import { DictationLanguageSetting } from "../components/dictation-language.tsx";
 import { SettingsMenuTrigger } from "../components/settings/controls.tsx";
 import { SubscriptionConnections } from "../components/settings/subscription-connections.tsx";
@@ -104,8 +104,15 @@ describe("Providers settings-label typography", () => {
 			assert.ok(settings.includes(`<span class="font-prose text-(length:--lh-prose-size) text-foreground">${label}</span>`), `${label}: settings sans label`);
 			assert.ok(setup.includes(`<span class="font-ui text-xs text-foreground">${label}</span>`), `${label}: unchanged setup label`);
 		}
-		assert.equal((settings.match(/>Connect<\/button>/g) ?? []).length, 3);
-		assert.equal((setup.match(/>Connect<\/button>/g) ?? []).length, 3);
+		// Local-agent rows carry the runtime in the label, e.g. "Claude Code (claude)".
+		for (const agent of LOCAL_AGENTS) {
+			const label = `${agent.label} (${agent.runtime})`;
+			assert.ok(settings.includes(`<span class="font-prose text-(length:--lh-prose-size) text-foreground">${label}</span>`), `${label}: settings sans label`);
+			assert.ok(setup.includes(`<span class="font-ui text-xs text-foreground">${label}</span>`), `${label}: unchanged setup label`);
+		}
+		// ChatGPT, Copilot and Grok, plus the Claude Code and Antigravity local-agent rows.
+		assert.equal((settings.match(/>Connect<\/button>/g) ?? []).length, 5);
+		assert.equal((setup.match(/>Connect<\/button>/g) ?? []).length, 5);
 	});
 });
 

@@ -1,6 +1,6 @@
 /**
  * POST /api/connections/local/:provider — one control action on a local
- * agent connection (docs/architecture.md §8.2): refresh | enable |
+ * agent connection (FORK.md, "Local agent connections"): refresh | enable |
  * consent | signIn | cancelSignIn. Sign-in (Antigravity) runs inside the
  * vendor runtime, which opens the browser itself; the response returns at
  * once with `pending` set and the client polls GET for the outcome.

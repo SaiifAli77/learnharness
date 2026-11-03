@@ -49,7 +49,7 @@ test("compact rows render in approved order with no browser-only sign-in or fabr
 	const html = renderToStaticMarkup(<ChatGPTUIProvider><NativeSubscriptionUIProvider><SubscriptionConnections /></NativeSubscriptionUIProvider></ChatGPTUIProvider>);
 	assert(html.indexOf('data-testid="chatgpt-connection"') < html.indexOf('data-testid="github-copilot-connection"'));
 	assert(html.indexOf('data-testid="github-copilot-connection"') < html.indexOf('data-testid="xai-connection"'));
-	// Local agent connections (§8.2) follow the app-owned sign-ins.
+	// Local agent connections (FORK.md) follow the app-owned sign-ins.
 	assert(html.indexOf('data-testid="xai-connection"') < html.indexOf('data-testid="claude-code-connection"'));
 	assert(html.indexOf('data-testid="claude-code-connection"') < html.indexOf('data-testid="antigravity-connection"'));
 	assert.equal((html.match(/>Connect<\/button>/g) ?? []).length, 5);

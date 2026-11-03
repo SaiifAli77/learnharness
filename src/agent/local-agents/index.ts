@@ -1,5 +1,5 @@
 /**
- * Local agent connections (docs/architecture.md §8.2): Claude through the
+ * Local agent connections (FORK.md, "Local agent connections"): Claude through the
  * learner's own Claude Code CLI and Antigravity through Google's official
  * ACP server — both installed and signed in by the learner, driven by the
  * app over their documented local protocols with the app's tools bridged

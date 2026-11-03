@@ -1,6 +1,6 @@
 /**
- * The local agent preference adapter (docs/architecture.md §8.2):
- * data/local-agents.json (config.LOCAL_AGENTS_FILE), under the LH_DATA_DIR
+ * The local agent preference adapter (FORK.md, "Local agent connections"):
+ * data/local-agents.json (next to config.SETTINGS_FILE), under the LH_DATA_DIR
  * seam. Holds only the learner's enabled/background-use choices per
  * locally installed runtime — never a credential (the runtimes own their
  * sign-in). Absent/corrupt file = no choices yet; unknown providers are
@@ -9,9 +9,11 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { LOCAL_AGENTS_FILE } from "../../config.ts";
-import { LOCAL_AGENTS, type LocalAgentPreferences, type LocalAgentProviderId } from "../core/contracts/local-agents.ts";
-import type { LocalAgentPreferenceStore } from "../core/ports.ts";
+import { SETTINGS_FILE } from "../../config.ts";
+import { LOCAL_AGENTS, type LocalAgentPreferences, type LocalAgentPreferenceStore, type LocalAgentProviderId } from "../core/contracts/local-agents.ts";
+
+/** Same data root as settings.json (the LH_DATA_DIR seam), without editing upstream config.ts. */
+const LOCAL_AGENTS_FILE = path.join(path.dirname(SETTINGS_FILE), "local-agents.json");
 
 type Record_ = Partial<Record<LocalAgentProviderId, LocalAgentPreferences>>;
 

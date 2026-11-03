@@ -7,7 +7,7 @@ import { parseHTML } from "linkedom";
 import { LocalAgentBackgroundAccess, LocalAgentConnections, LocalAgentUIProvider, emptyLocalAgentStatus, localAgentNotice } from "../components/settings/local-agent-connections.tsx";
 import { LOCAL_AGENTS, type LocalAgentStatus } from "../src/core/contracts/local-agents.ts";
 
-// Local agent connections (docs/architecture.md §8.2): the Providers rows
+// Local agent connections (FORK.md, "Local agent connections"): the Providers rows
 // and dialog over GET/POST /api/connections/local.
 const dom = parseHTML("<html><body></body></html>");
 Object.assign(globalThis, { window: dom.window, document: dom.document, Element: dom.window.Element, HTMLElement: dom.window.HTMLElement, CustomEvent: dom.window.CustomEvent, IS_REACT_ACT_ENVIRONMENT: true });

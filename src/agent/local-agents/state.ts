@@ -1,6 +1,5 @@
 import type { Api, Model } from "@earendil-works/pi-ai";
-import { DEFAULT_LOCAL_AGENT_PREFERENCES, LOCAL_AGENTS, type LocalAgentPreferences, type LocalAgentProviderId, type LocalAgentStatus } from "../../core/contracts/local-agents.ts";
-import type { LocalAgentPreferenceStore } from "../../core/ports.ts";
+import { DEFAULT_LOCAL_AGENT_PREFERENCES, LOCAL_AGENTS, type LocalAgentPreferences, type LocalAgentPreferenceStore, type LocalAgentProviderId, type LocalAgentStatus } from "../../core/contracts/local-agents.ts";
 import type { AdmissionScope } from "../subscription-request-cycle.ts";
 import type { AdapterProbe, LocalAgentAdapter } from "./adapter.ts";
 import { antigravityAdapter } from "./antigravity.ts";
@@ -8,7 +7,7 @@ import { claudeAdapter } from "./claude.ts";
 import { closeProviderRuns } from "./run.ts";
 
 /**
- * Local agent connection state (docs/architecture.md §8.2). Everything here
+ * Local agent connection state (FORK.md, "Local agent connections"). Everything here
  * is derived from the runtimes themselves (installed? signed in? which
  * account?) plus the learner's two persisted choices (enabled, background
  * use). No credential ever passes through. The preference store arrives

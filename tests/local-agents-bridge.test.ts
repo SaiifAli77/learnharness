@@ -6,7 +6,7 @@ import path from "node:path";
 import type { Message, ToolResultMessage } from "@earendil-works/pi-ai";
 import { AssistantMessageEventStream } from "@earendil-works/pi-ai/utils/event-stream";
 
-// Local agent connections (docs/architecture.md §8.2): the loopback tool
+// Local agent connections (FORK.md, "Local agent connections"): the loopback tool
 // bridge, the park/resume matching rules, the transcript, and the small
 // server/core seams around them.
 const directory = fs.mkdtempSync(path.join(os.tmpdir(), "lh-local-bridge-"));

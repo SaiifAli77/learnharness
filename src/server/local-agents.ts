@@ -1,6 +1,6 @@
 /**
- * Local agent connections — the server composition (docs/architecture.md
- * §8.2). Plugs the preference store into the agent-layer state and serves
+ * Local agent connections — the server composition (FORK.md,
+ * "Local agent connections"). Plugs the preference store into the agent-layer state and serves
  * GET/POST /api/connections/local. Importing this module wires the store
  * (model-catalog.ts imports it, so every catalog/engine consumer is wired).
  */

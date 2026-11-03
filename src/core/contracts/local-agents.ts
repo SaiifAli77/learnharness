@@ -1,5 +1,5 @@
 /**
- * Local agent connections (docs/architecture.md §8.2): LearnHarness drives a
+ * Local agent connections (FORK.md, "Local agent connections"): LearnHarness drives a
  * vendor CLI the learner installed and signed into themselves. The CLI owns
  * every credential; the app never sees, stores, or refreshes a token. The
  * persisted provider ids are distinct routes — they never fall back to API
@@ -67,3 +67,15 @@ export type LocalAgentAction =
 	| { action: "consent"; allowBackgroundUse: boolean }
 	| { action: "signIn" }
 	| { action: "cancelSignIn" };
+
+/**
+ * The learner's per-connection choices for locally installed agent
+ * runtimes (enabled, background use) — the ONLY state LearnHarness keeps
+ * for them; the runtimes own their sign-in. Absent or corrupt file = no
+ * choices yet (every connection off). Never throws on read. Lives here, not
+ * in core/ports.ts, so the fork leaves that upstream file untouched.
+ */
+export interface LocalAgentPreferenceStore {
+	read(): Partial<Record<LocalAgentProviderId, LocalAgentPreferences>>;
+	write(providerId: LocalAgentProviderId, preferences: LocalAgentPreferences): void;
+}

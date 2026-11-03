@@ -8,7 +8,7 @@ import { Agent } from "@earendil-works/pi-agent-core";
 import { Type, type AssistantMessage, type ToolResultMessage } from "@earendil-works/pi-ai";
 
 // Local agent connection — Claude through the learner's own Claude Code
-// (docs/architecture.md §8.2), driven end to end through pi-agent-core
+// (FORK.md, "Local agent connections"), driven end to end through pi-agent-core
 // against a scripted stand-in for the CLI's stream-json protocol.
 const directory = fs.mkdtempSync(path.join(os.tmpdir(), "lh-local-claude-"));
 const fake = fileURLToPath(new URL("./fixtures/local-agents/fake-claude.mjs", import.meta.url));

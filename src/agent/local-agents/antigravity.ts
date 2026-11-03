@@ -15,7 +15,7 @@ import type { PromptBlock } from "./transcript.ts";
 
 /**
  * Antigravity via Google's official Antigravity ACP server, installed by the
- * learner (docs/architecture.md §8.2). Google's binary makes every model
+ * learner (FORK.md, "Local agent connections"). Google's binary makes every model
  * request and owns the Google sign-in and its tokens; LearnHarness only
  * speaks the Agent Client Protocol to it over stdio and never reads a token.
  *

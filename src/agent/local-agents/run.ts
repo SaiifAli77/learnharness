@@ -6,7 +6,7 @@ import type { BridgeTool, BridgeToolResult, ToolBridge, ToolCallRequest } from "
 import type { PromptBlock } from "./transcript.ts";
 
 /**
- * "Park within a run" (docs/architecture.md §8.2). A local CLI runs its own
+ * "Park within a run" (FORK.md, "Local agent connections"). A local CLI runs its own
  * agent loop; pi-agent-core runs the app's. One LocalRun is one live CLI
  * conversation spanning several pi model steps:
  *

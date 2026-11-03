@@ -8,7 +8,7 @@ import { Agent } from "@earendil-works/pi-agent-core";
 import { getSupportedThinkingLevels, Type, type AssistantMessage } from "@earendil-works/pi-ai";
 
 // Local agent connection — Antigravity through Google's official ACP
-// server (docs/architecture.md §8.2), against a scripted ACP stand-in.
+// server (FORK.md, "Local agent connections"), against a scripted ACP stand-in.
 const directory = fs.mkdtempSync(path.join(os.tmpdir(), "lh-local-antigravity-"));
 const fake = fileURLToPath(new URL("./fixtures/local-agents/fake-acp.mjs", import.meta.url));
 fs.chmodSync(fake, 0o755);

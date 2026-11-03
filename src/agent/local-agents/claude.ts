@@ -12,7 +12,7 @@ import type { LocalRun, RunSession } from "./run.ts";
 import type { PromptBlock } from "./transcript.ts";
 
 /**
- * Claude via the learner's own Claude Code CLI (docs/architecture.md §8.2).
+ * Claude via the learner's own Claude Code CLI (FORK.md, "Local agent connections").
  * LearnHarness never runs a claude.ai login and never touches the token:
  * Claude Code uses whatever sign-in the learner set up with
  * `claude auth login`. The app speaks the CLI's documented headless

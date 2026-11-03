@@ -3,8 +3,8 @@ import http from "node:http";
 import type { AddressInfo } from "node:net";
 
 /**
- * The loopback tool bridge (local agent connections, docs/architecture.md
- * §8.2): a minimal MCP Streamable-HTTP server that exposes the CURRENT
+ * The loopback tool bridge (local agent connections, FORK.md,
+ * "Local agent connections"): a minimal MCP Streamable-HTTP server that exposes the CURRENT
  * agent step's app tools to a locally installed vendor CLI (Claude Code,
  * the Antigravity ACP server). The CLI runs its own agent loop; the app's
  * pi-agent-core loop stays the one that EXECUTES tools — a `tools/call`
