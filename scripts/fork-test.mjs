@@ -39,6 +39,8 @@ const SKIPPED_TESTS = [
 	["piEngineForSpec({ provider: \"claude-code\", id: \"sonnet\" }) resolves"],
 	// upstream's CLI opt-in/availability gate
 	["providerKeyPresent(\"claude-code\") requires both explicit opt-in and executable presence"],
+	// asserts choice mode holds only `quiz`; the fork's teacher also holds `explain` for node essays
+	["createTeacherTools: {research: false} removes exactly research; unknown keys are no-ops"],
 ];
 
 const escape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
