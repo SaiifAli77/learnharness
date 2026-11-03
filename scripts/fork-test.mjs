@@ -27,6 +27,18 @@ const SKIPPED_TESTS = [
 	["three compact rows render in approved order with no browser-only sign-in or fabricated identities"],
 	// same: three Connect rows and three labels (tests/fork-local-agent-rows.test.tsx covers all five)
 	["only Providers subscription labels use sans; setup labels retain their compact mono styling"],
+	// expects an unchanged Claude prompt; the fork adds the delivery rule (tests/claude-delivery.test.ts runs these cases)
+	// (v0.5.0 renamed these from "…: includes tool and description in all conversation agents")
+	["anthropic/claude-opus-5-5: includes teaching output, never adds it to practice"],
+	["anthropic/claude-haiku-4-5-20251001: includes teaching output, never adds it to practice"],
+	["openrouter/anthropic/claude-opus-5.5: includes teaching output, never adds it to practice"],
+	["openrouter/anthropic/claude-sonnet-5.5: includes teaching output, never adds it to practice"],
+	["amazon-bedrock/us.anthropic.claude-opus-5-5-v1:0: includes teaching output, never adds it to practice"],
+	["fixture/CLAUDE-fixture: includes teaching output, never adds it to practice"],
+	// its "plain thinking" is fauxThinking with NO signature, which is what the Claude Code/Antigravity bridge emits (src/agent/local-agents/run.ts); the fork's deliveryGuard bounces unsigned thinking once there, where upstream's guard is inert. Plain SIGNED thinking passes (tests/claude-delivery.test.ts)
+	["allows a legitimate predict with plain thinking and no prose"],
+	// same: unsigned (bridge) thinking; the signed API case passes in tests/claude-delivery.test.ts
+	["allows a legitimate check with plain thinking and no prose"],
 	// expects upstream's removed "External CLI" settings group
 	["Providers has five ordered sections including External CLI; unknown variables stay masked/read-only at the end of Model API keys"],
 	// upstream's claude-code opus id (provider switched off)
