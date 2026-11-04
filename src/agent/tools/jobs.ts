@@ -5,6 +5,7 @@ import type { JobRecord } from "../../core/contracts.ts";
 import type { JobStore } from "../../core/ports.ts";
 import { checkLearnerImage } from "./learner-image.ts";
 import { resolveSourcePath } from "./fs-shared.ts";
+import { forkSlidesTools } from "../fork-slides/tools.ts";
 
 /**
  * Async sub-agent job tools (vision §2.5; W2/W6 kinds + the pi-model
@@ -182,6 +183,7 @@ export function jobTools(ctx: JobToolContext): Record<string, AgentTool<any>> {
 				return dispatch(ctx, "pdf", toolCallId, PDF_ACK, input);
 			}),
 		},
+		...forkSlidesTools(ctx),
 	};
 }
 

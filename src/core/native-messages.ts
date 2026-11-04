@@ -46,6 +46,7 @@ import {
 import { compactAnswerForModel, type QuestionAnswerData } from "./question-core.ts";
 import { activeCompactionOf, keptIndexFor } from "./compaction.ts";
 import { parseQuestionInput } from "./tool-parts.ts";
+import { forkSlidesFailedCalls, forkSlidesNarration } from "./fork-slides.ts";
 
 /** The hard-invariant wording for an aborted turn's unanswered calls —
  *  carried over verbatim from the pre-native era so the model's view
@@ -145,7 +146,7 @@ export function userFacingTextOf(content: unknown, failedOutputCalls?: ReadonlyS
 	for (const block of content) {
 		if (!block || typeof block !== "object") continue;
 		if (block.type === "toolCall" && failedOutputCalls?.has(block.id)) continue;
-		const text = block.type === "text" ? block.text : sendToUserText(block);
+		const text = block.type === "text" ? block.text : sendToUserText(block) ?? forkSlidesNarration(block);
 		if (typeof text === "string" && text.trim()) out.push(text);
 	}
 	return out;
@@ -165,6 +166,7 @@ export function failedOutputCallIds(messages: readonly LhMessage[]): ReadonlySet
 			}
 		}
 	}
+	forkSlidesFailedCalls(messages, failed);
 	return failed;
 }
 

@@ -65,6 +65,14 @@ const SKIPPED_TESTS = [
 	["chooses the first recorded non-empty anchor for that source"],
 	// same: the href now has ?full=1 before the hash
 	["encodes path/hash values and round-trips the actual message ID"],
+	// pins the toggleable list; the fork adds `slides` (tests/fork-slides.test.ts re-asserts the fork's list)
+	["TOGGLEABLE_TOOLS: the sub-agent dispatch tools; quiz/ask/read stay off the list"],
+	// same, for the settings tool rows (tests/fork-slides.test.ts renders the fork's five rows)
+	["renders the owner's FINAL tool list — research, demo, visual, pdf"],
+	// pins jobTools()' keys; the fork spreads `slides` into it (tests/fork-slides.test.ts re-asserts the five keys)
+	["demo and visual are SERVER-EXECUTED dispatch tools with the contract schemas"],
+	// pins the settings write-side's supported list; the fork adds `slides` (re-asserted in tests/fork-slides.test.ts)
+	["unknown keys are rejected with the supported list (the quiz wedge never persists)"],
 ];
 
 const escape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

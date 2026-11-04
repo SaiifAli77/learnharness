@@ -31,6 +31,7 @@ import { runPdfReaderAgent } from "./pdf-reader.ts";
 import { runResearcherAgent } from "./researcher.ts";
 import { runVisualMaker } from "./visual-maker.ts";
 import { loadLearnerImage, type LearnerImage } from "../tools/learner-image.ts";
+import { forkSlidesEngine, forkSlidesRole, isForkSlidesJob, runForkSlidesJob } from "../fork-slides/runner-hook.ts";
 
 /**
  * The background job runner (contracts.ts "THE ASYNC PROTOCOL" §2–3), created
@@ -184,7 +185,7 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
 		(jobId: string, engine: PiEngine, input: JobToolInput | undefined, loop: LoopContext) => Promise<void>
 	> = {
 		research: (jobId, engine, input, loop) => runResearchJob(jobId, engine, input, loop),
-		demo: (jobId, engine, input, loop) => runDemoJob(jobId, engine, input, loop),
+		demo: (jobId, engine, input, loop) => isForkSlidesJob(jobStore.getJob(jobId)) ? runForkSlidesJob(jobId, engine, loop, { jobStore, finishJob, stillRunning }) : runDemoJob(jobId, engine, input, loop),
 		visual: (jobId, engine, input, loop) => runVisualJob(jobId, engine, input, loop),
 		pdf: (jobId, engine, input, loop) => runPdfJob(jobId, engine, input, loop),
 	};
@@ -202,7 +203,7 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
 			jobStore.updateJob(jobId, { status: "error", error: `unknown kind ${job.kind}`, activity: "failed" });
 			return;
 		}
-		const engine = pickEngine(job.kind);
+		const engine = isForkSlidesJob(job) ? forkSlidesEngine(deps.engineFor) : pickEngine(job.kind);
 		// The per-need refusal guards (BYOK 2026-09-22 / provider-key
 		// interlude 2026-09-25): no engine for the kind's tier, or the
 		// resolved engine's provider key gone — both refuse through the SAME
@@ -242,7 +243,7 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
 			await finishJob(jobId, failure);
 		};
 		if (!engine) {
-			const tier = ROLE_SLOT[KIND_ROLE[job.kind]];
+			const tier = ROLE_SLOT[forkSlidesRole(job, KIND_ROLE[job.kind])];
 			const envelope = modelsNotConfigured([tier]);
 			console.info(`[job ${jobId}] refused — ${JSON.stringify(envelope)}`);
 			await refuse(`${envelope.error} (missing: ${tier})`);
@@ -253,7 +254,7 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
 		// convention (the injected check reads the key store; absent in
 		// engine-injecting tests).
 		const keyRefusal =
-			deps.providerKeyMissing?.(engine.model.provider, ROLE_SLOT[KIND_ROLE[job.kind]]) ?? null;
+			deps.providerKeyMissing?.(engine.model.provider, ROLE_SLOT[forkSlidesRole(job, KIND_ROLE[job.kind])]) ?? null;
 		if (keyRefusal) {
 			console.info(`[job ${jobId}] refused — ${JSON.stringify(keyRefusal)}`);
 			await refuse(keyRefusal.error);

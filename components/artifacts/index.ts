@@ -28,6 +28,7 @@ export const artifactRenderers: Record<string, ComponentType<ArtifactPartProps>>
 	// part-level plan_init divider retired with it).
 	// Artifacts (W6 fills in the components):
 	demo: DemoCard,
+	slides: DemoCard,
 	visual: VisualCard,
 	// A learner image shown as-is (issue #363): the picture itself, inline.
 	show_image: ImageCard,

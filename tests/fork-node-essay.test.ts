@@ -53,7 +53,7 @@ describe("node essays (fork)", () => {
 	// Replaces the skipped upstream "createTeacherTools: {research: false} …"
 	// test (tests/question-tools.test.ts) with the fork's choice-mode list.
 	it("teacher toggles still remove exactly the toggled tool, in both mechanics", () => {
-		const choiceFull = ["ask_user_question", "demo", "explain", "find", "grep", "ls", "pdf", "plan_init", "quiz", "read", "research", "show_image", "visual"];
+		const choiceFull = ["ask_user_question", "demo", "explain", "find", "grep", "ls", "pdf", "plan_init", "quiz", "read", "research", "show_image", "slides", "visual"];
 		assert.deepEqual(Object.keys(createTeacherTools(teacherCtx)).sort(), choiceFull);
 		assert.deepEqual(Object.keys(createTeacherTools(teacherCtx, {})).sort(), choiceFull, "absent keys mean enabled");
 		assert.deepEqual(Object.keys(createTeacherTools(teacherCtx, { research: false })).sort(), choiceFull.filter((t) => t !== "research"));
