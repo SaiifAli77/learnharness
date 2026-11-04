@@ -39,10 +39,10 @@ type PiEngine = import("../src/agent/models.ts").PiEngine;
 type HeadlessApi = import("../src/agent/subagents/headless.ts").HeadlessApi;
 
 const { evaluateExpr, checkNumber, parseDisplayedValue } = await import("../src/agent/fork-slides/expr.ts");
-const { forkSlidesTools, slidesInputProblems, spokenWords } = await import("../src/agent/fork-slides/tools.ts");
+const { forkSlidesTools, slidesInputProblems, spokenWords, slidesInputSchema, NODE_VIDEO_TARGET_WORDS } = await import("../src/agent/fork-slides/tools.ts");
 const { parseStage, assembleFrame, resolveSlide, stepProblems, StageError, FADE_OPACITY, BOX_RED, FRAME_BACKGROUND } = await import("../src/agent/fork-slides/frames.ts");
 const { runSlidesMaker, FRAMES_PER_LOOK } = await import("../src/agent/subagents/fork-slides-maker.ts");
-const { forkSlidesModelOverride, isForkSlidesJob } = await import("../src/agent/fork-slides/runner-hook.ts");
+const { forkSlidesModelOverride, forkSlidesTtsOverride, isForkSlidesJob } = await import("../src/agent/fork-slides/runner-hook.ts");
 const { forkSlidesDir, forkSlidesRoot } = await import("../src/agent/fork-slides/storage.ts");
 const { isForkSlidesResult, FORK_SLIDES_MARKER } = await import("../src/core/fork-slides.ts");
 const { jobTools } = await import("../src/agent/tools/jobs.ts");
@@ -55,7 +55,7 @@ const { chatStore } = await import("../src/store/chats.ts");
 const { buildSubagentSteer } = await import("../src/core/contracts.ts");
 const { projectView } = await import("../src/core/view.ts");
 const { SubagentSteerCard } = await import("../components/artifacts/steer-card.tsx");
-const { ForkSlidesCard, nextBuildStep, moveSlide, deckKey } = await import("../components/artifacts/fork-slides-card.tsx");
+const { ForkSlidesCard, ForkSlidesDispatchCard, nextBuildStep, moveSlide, deckKey } = await import("../components/artifacts/fork-slides-card.tsx");
 const { artifactRenderers } = await import("../components/artifacts/index.ts");
 const { DemoCard } = await import("../components/artifacts/demo-card.tsx");
 const { TOGGLEABLE_TOOLS } = await import("../src/core/pending.ts");
@@ -141,6 +141,13 @@ function newChat(title: string): string {
 	return chatStore.createChat(title).id;
 }
 
+/** A chat with a two-node plan map (node videos need a nodeId on it). */
+function plannedChat(title: string): string {
+	const id = newChat(title);
+	chatStore.saveTree(id, { nodes: [{ id: "n1", title: "One" }, { id: "n2", title: "Two" }], edges: [], version: 1 });
+	return id;
+}
+
 // ─── 1. the number checker ─────────────────────────────────────────────────
 
 describe("slides: the number checker (fork)", () => {
@@ -206,7 +213,7 @@ describe("slides: the number checker (fork)", () => {
 
 describe("slides: dispatch (fork)", () => {
 	const spawned: Array<{ id: string; input: unknown }> = [];
-	const ctxFor = (chatId: string) => ({ chatId, jobStore, spawn: (job: { id: string }, input: unknown) => spawned.push({ id: job.id, input }) });
+	const ctxFor = (chatId: string) => ({ chatId, jobStore, chatStore, spawn: (job: { id: string }, input: unknown) => spawned.push({ id: job.id, input }) });
 	const run = async (chatId: string, toolCallId: string, input: unknown) => {
 		const tools = jobTools(ctxFor(chatId) as never);
 		const res = await tools.slides!.execute(toolCallId, input as never, undefined as never);
@@ -234,12 +241,32 @@ describe("slides: dispatch (fork)", () => {
 		assert.equal(spawned.length, before + 1, "no second spawn");
 	});
 
-	it("a video ACK says to keep teaching in prose", async () => {
-		const chatId = newChat("slides video");
+	it("a video ACK says to carry on meanwhile, to show it first at its node, then to teach the node in full", async () => {
+		const chatId = plannedChat("slides video");
 		const say = Array.from({ length: 50 }, () => "one two three four five six seven eight nine").join(" ");
-		const res = await run(chatId, "tc-video", script({ kind: "video", slides: [{ steps: [{ say, show: "x" }] }] }));
+		const res = await run(chatId, "tc-video", script({ kind: "video", nodeId: "n2", slides: [{ steps: [{ say, show: "x" }] }] }));
 		assert.equal(res.isError, false, res.text);
-		assert.match(res.text, /Keep teaching in prose/);
+		assert.match(res.text, /Carry on with the current activity while it builds \(during the subject video, the invention questions; otherwise teach in prose\): do not wait, poll, or mention waiting\./);
+		assert.match(
+			res.text,
+			/The node video arrives as a new message\. At its node, point the learner to it first and wait for them to watch it and send a message; then teach that node in full \(worked numbers, predict and check questions, its closing essay\): the video never replaces the teaching\./,
+		);
+		assert.equal((jobStore.findJobByToolCallId(chatId, "tc-video")!.input as { nodeId?: string }).nodeId, "n2", "the job keeps the node");
+	});
+
+	it("a video needs a nodeId from this session's plan map", async () => {
+		const say = Array.from({ length: 50 }, () => "one two three four five six seven eight nine").join(" ");
+		const video = (extra: Record<string, unknown>) => script({ kind: "video", slides: [{ steps: [{ say, show: "x" }] }], ...extra });
+		const chatId = plannedChat("slides video node");
+		const missing = await run(chatId, "tc-video-nonode", video({}));
+		assert.equal(missing.isError, true);
+		assert.match(missing.text, /a video needs nodeId/);
+		const unknown = await run(chatId, "tc-video-unknown", video({ nodeId: "n9" }));
+		assert.match(unknown.text, /nodeId "n9" matches no node in this session's plan map\. Copy one of your plan_init slugs exactly \(n1, n2\)/);
+		const unplanned = await run(newChat("slides video no plan"), "tc-video-noplan", video({ nodeId: "n1" }));
+		assert.match(unplanned.text, /No plan map exists yet/);
+		assert.equal(jobStore.findJobByToolCallId(chatId, "tc-video-unknown"), null, "no job for an invalid call");
+		assert.deepEqual(slidesInputProblems(script({ nodeId: "n9" }) as never, { chatId, jobStore, chatStore }), [], "a deck ignores nodeId");
 	});
 
 	it("rejects a wrong or unparsable number, naming slide, step, number and the computed value", async () => {
@@ -264,15 +291,73 @@ describe("slides: dispatch (fork)", () => {
 	});
 
 	it("rejects a video outside 400–850 spoken words, counting every say", () => {
-		const ctx = { chatId: "x", jobStore };
+		const ctx = { chatId: plannedChat("slides video words"), jobStore, chatStore };
 		const words = (n: number) => Array.from({ length: n }, () => "w").join(" ");
-		const video = (n: number) => script({ kind: "video", slides: [{ steps: [{ say: words(n - 100), show: "x" }, { say: words(100), show: "y" }] }] });
+		const video = (n: number) => script({ kind: "video", nodeId: "n1", slides: [{ steps: [{ say: words(n - 100), show: "x" }, { say: words(100), show: "y" }] }] });
 		assert.equal(spokenWords(video(500) as never), 500);
-		assert.match(slidesInputProblems(video(399) as never, ctx).join(), /400–850 spoken words.*has 399/);
-		assert.match(slidesInputProblems(video(851) as never, ctx).join(), /has 851/);
+		assert.deepEqual(slidesInputProblems(video(399) as never, ctx), [
+			'a node video needs 400–850 spoken words; this script\'s "say" text has 399 words: at least 1 more are needed; aim for about 550 (about 151 more).',
+		]);
+		assert.deepEqual(slidesInputProblems(video(385) as never, ctx), [
+			'a node video needs 400–850 spoken words; this script\'s "say" text has 385 words: at least 15 more are needed; aim for about 550 (about 165 more).',
+		]);
+		assert.deepEqual(slidesInputProblems(video(900) as never, ctx), [
+			'a node video needs 400–850 spoken words; this script\'s "say" text has 900 words: cut at least 50; aim for about 550.',
+		]);
+		assert.match(slidesInputProblems(video(851) as never, ctx).join(), /has 851 words: cut at least 1;/);
+		assert.equal(NODE_VIDEO_TARGET_WORDS, 550);
+		assert.match((slidesInputSchema.properties.kind as unknown as { description: string }).description, /"video": a node video of 400–850 spoken words \(aim for about 550 words, about 50–60 steps\), for the plan node in nodeId, built two nodes ahead\./);
 		assert.deepEqual(slidesInputProblems(video(400) as never, ctx), []);
 		assert.deepEqual(slidesInputProblems(video(850) as never, ctx), []);
 		assert.deepEqual(slidesInputProblems(script({ slides: [{ steps: [{ say: words(10), show: "x" }] }] }) as never, ctx), [], "a deck has no word range");
+	});
+
+	it("the subject video's ACK names the videos of nodes 1 and 2 (those not already built), only when they can be drawn; a replay gets the same ACK", async () => {
+		const words = (n: number) => Array.from({ length: n }, () => "w").join(" ");
+		const part = script({ kind: "subject", part: 1, of: 1, minutes: 5, slides: [{ steps: [{ say: words(600), show: "x" }] }] });
+		const nodeVideo = script({ kind: "video", nodeId: "n1", slides: [{ steps: [{ say: words(450), show: "x" }] }] });
+		const BOTH = 'Now, before the invention questions, build the node videos for "n1" ("One") and "n2" ("Two"): one slides call each, kind "video".';
+		headlessOverride.current = fakeHeadless();
+		try {
+			const chatId = plannedChat("slides subject ack");
+			const res = await run(chatId, "tc-subject-ack", part);
+			assert.equal(res.isError, false, res.text);
+			assert.match(res.text, /^Dispatched \(job job_/);
+			assert.match(res.text, /begin node 1 after that\./);
+			assert.ok(res.text.endsWith(` ${BOTH}`), res.text);
+			assert.equal((await run(chatId, "tc-subject-ack", part)).text, res.text, "a replayed completing call gets the ACK it got");
+
+			const covered = plannedChat("slides subject ack covered");
+			assert.equal((await run(covered, "tc-video-first", nodeVideo)).isError, false);
+			const one = await run(covered, "tc-subject-covered", part);
+			assert.ok(one.text.endsWith(' Now, before the invention questions, build the node video for "n2" ("Two"): one slides call, kind "video".'), one.text);
+
+			// The sequence the subject ACK asks for: node 1's and node 2's videos, while the invention questions go on.
+			const seq = plannedChat("slides subject then node videos");
+			const subjectAck = await run(seq, "tc-seq-subject", part);
+			assert.ok(subjectAck.text.endsWith(` ${BOTH}`), subjectAck.text);
+			assert.match(subjectAck.text, /Meanwhile let the learner try to invent the subject/);
+			for (const nodeId of ["n1", "n2"]) {
+				const ack = await run(seq, `tc-seq-${nodeId}`, { ...nodeVideo, nodeId });
+				assert.equal(ack.isError, false, ack.text);
+				assert.match(ack.text, /during the subject video, the invention questions/);
+				assert.doesNotMatch(ack.text, /[Ss]top (asking|the invention)/, "a node video never ends the invention questions");
+				assert.doesNotMatch(ack.text, /^Dispatched \(job [^)]+\)\. Keep teaching in prose/, "nor says to teach meanwhile, which the subject phase forbids");
+			}
+
+			const unplanned = await run(newChat("slides subject ack no plan"), "tc-subject-noplan", part);
+			assert.ok(unplanned.text.endsWith("begin node 1 after that."), "no plan map, no node line");
+		} finally {
+			headlessOverride.current = undefined;
+		}
+		headlessOverride.current = { ...fakeHeadless(), unavailableReason: () => "no browser" };
+		try {
+			const res = await run(plannedChat("slides subject ack headless"), "tc-subject-headless", part);
+			assert.equal(res.isError, false, res.text);
+			assert.ok(res.text.endsWith("begin node 1 after that."), "no node line when videos cannot be drawn");
+		} finally {
+			headlessOverride.current = undefined;
+		}
 	});
 
 	it("rejects continues that is not an earlier finished slides deck in this chat", async () => {
@@ -466,6 +551,8 @@ describe("slides: runner, storage and route (fork)", () => {
 		const chatId = newChat("slides e2e");
 		const headless = fakeHeadless();
 		headlessOverride.current = headless;
+		// Narration is covered by tests/fork-slides-narration.test.ts; never spawn uv here.
+		forkSlidesTtsOverride.current = async () => ({ ok: false, reason: "no narration in this test" });
 		forkSlidesModelOverride.current = scriptedModel([
 			{ toolCalls: [{ id: "w", name: "write_stage", input: { svg: STAGE } }, { id: "s", name: "set_slide", input: { slide: 1, steps: STEPS_1 } }] },
 			{ toolCalls: [{ id: "l", name: "look", input: {} }] },
@@ -516,6 +603,32 @@ describe("slides: runner, storage and route (fork)", () => {
 		} finally {
 			headlessOverride.current = undefined;
 			forkSlidesModelOverride.current = undefined;
+			forkSlidesTtsOverride.current = undefined;
+		}
+	});
+
+	it("a delivered node video's notes: show it first at its node, wait for the learner, then teach the node in full", async () => {
+		const chatId = plannedChat("slides node video notes");
+		headlessOverride.current = fakeHeadless();
+		forkSlidesTtsOverride.current = async () => ({ ok: false, reason: "no narration in this test" });
+		forkSlidesModelOverride.current = scriptedModel([
+			{ toolCalls: [{ id: "w", name: "write_stage", input: { svg: STAGE } }, { id: "s", name: "set_slide", input: { slide: 1, steps: STEPS_1 } }] },
+			{ toolCalls: [{ id: "l", name: "look", input: {} }] },
+			{ text: "Both frames checked." },
+		]);
+		try {
+			const job = jobStore.createJob({ kind: "demo", chatId, toolCallId: "tc-node-notes", input: { ...script({ kind: "video", nodeId: "n2" }), [FORK_SLIDES_MARKER]: true } });
+			await runner().runJob(job.id);
+			const done = jobStore.getJob(job.id)!;
+			assert.equal(done.status, "done", done.error);
+			assert.match(
+				(done.result as { notes: string }).notes,
+				/It is the video for node "n2", built ahead: when the learner reaches that node, point them to it first and wait for them to watch it and send a message; then teach that node in full \(worked numbers, predict and check questions, its closing essay\): the video never replaces the teaching\. Do not retell it\./,
+			);
+		} finally {
+			headlessOverride.current = undefined;
+			forkSlidesModelOverride.current = undefined;
+			forkSlidesTtsOverride.current = undefined;
 		}
 	});
 
@@ -596,8 +709,14 @@ describe("slides: hooks (fork)", () => {
 		assert.equal(prober.slides, undefined);
 	});
 
-	it("while the job runs, the tool part renders the dispatch card", () => {
-		assert.equal(artifactRenderers.slides, DemoCard);
+	it("the tool part renders the demo dispatch card, or a quiet line for a received subject part", () => {
+		assert.equal(artifactRenderers.slides, ForkSlidesDispatchCard);
+		const part = (output: unknown) => ({ type: "tool-slides", state: "output-available", toolCallId: "t", output });
+		const dispatched = renderToStaticMarkup(h(ForkSlidesDispatchCard, { part: part("Dispatched (job job_1). x") }));
+		assert.equal(dispatched, renderToStaticMarkup(h(DemoCard, { part: part("Dispatched (job job_1). x") })), "upstream's card for a job");
+		const received = renderToStaticMarkup(h(ForkSlidesDispatchCard, { part: part("Part 2 of 3 received; send the rest (still missing: part 3).") }));
+		assert.match(received, /data-testid="fork-slides-part-received"/);
+		assert.match(received, /part 2 of 3 received/);
 	});
 
 	it("the steer card picks the slides card for a slides result and the demo card otherwise", () => {
@@ -718,8 +837,16 @@ describe("slides: narration as teacher prose (fork)", () => {
 		);
 	});
 
-	it("appears in messageViewLines with the TEACHER prefix and in teacherProseBlocks", () => {
-		const messages = [assistant("m1", "c1", args), toolResult("r1", "c1", false)];
+	const delivered = (callId: string) =>
+		buildSubagentSteer({ id: `job_${callId}`, kind: "demo", toolCallId: callId }, {
+			title: "Deck",
+			html: "slides",
+			tested: true,
+			forkSlides: { version: 1, jobId: `job_${callId}`, kind: "deck", stage: "stage.svg", slides: [{ steps: [{ say: "x", frame: "frame-01-1.svg" }] }] },
+		} as never) as never;
+
+	it("once delivered, appears in messageViewLines with the TEACHER prefix and in teacherProseBlocks", () => {
+		const messages = [assistant("m1", "c1", args), toolResult("r1", "c1", false), delivered("c1")];
 		const failed = failedOutputCallIds(messages);
 		assert.deepEqual(messageViewLines(messages[0]!, "m1", failed), ["TEACHER [m1] Here is the setup.", `TEACHER [m1] ${NARRATION}`]);
 		assert.deepEqual(teacherProseBlocks(messages), ["Here is the setup.", NARRATION]);
@@ -736,7 +863,7 @@ describe("slides: narration as teacher prose (fork)", () => {
 
 	it("a call in an aborted or errored assistant message is excluded", () => {
 		for (const stop of ["aborted", "error"]) {
-			const messages = [assistant("m1", "c1", args, stop)];
+			const messages = [assistant("m1", "c1", args, stop), delivered("c1")];
 			assert.deepEqual(teacherProseBlocks(messages), ["Here is the setup."], stop);
 			assert.deepEqual(messageViewLines(messages[0]!, "m1"), ["TEACHER [m1] Here is the setup."], stop);
 			assert.ok(!sessionMarkdown(messages).includes("Multiply by zero"), stop);

@@ -1,6 +1,7 @@
 import type { ComponentType } from "react";
 import type { ArtifactPartProps } from "@/src/core";
 import { DemoCard } from "@/components/artifacts/demo-card";
+import { ForkSlidesDispatchCard } from "@/components/artifacts/fork-slides-card";
 import { JobCard, PdfJobCard } from "@/components/artifacts/job-card";
 import { VisualCard } from "@/components/artifacts/visual-card";
 import { ImageCard } from "@/components/artifacts/image-card";
@@ -28,7 +29,7 @@ export const artifactRenderers: Record<string, ComponentType<ArtifactPartProps>>
 	// part-level plan_init divider retired with it).
 	// Artifacts (W6 fills in the components):
 	demo: DemoCard,
-	slides: DemoCard,
+	slides: ForkSlidesDispatchCard,
 	visual: VisualCard,
 	// A learner image shown as-is (issue #363): the picture itself, inline.
 	show_image: ImageCard,

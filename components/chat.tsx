@@ -26,6 +26,7 @@ import { artifactRenderers } from "@/components/artifacts";
 import { SubagentSteerCard } from "@/components/artifacts/steer-card";
 import { useForkChatActions, useForkSessionMermaid } from "@/components/fork-chat-contexts";
 import { forkRows, type ForkRowCache } from "@/components/fork-transcript-rows";
+import { forkHiddenStep, forkHiddenToolError } from "@/components/fork-hidden-tool-error";
 import { ChatSessionComposer } from "@/components/composer";
 import { useEnterSubmits } from "@/components/enter-submits";
 import { blurAfterPointerClick } from "@/components/focus-hygiene";
@@ -1542,6 +1543,7 @@ export function Chat({
 												// instead of silence (question tools used to render null,
 												// so a flailing quiz loop read as a stall). Aborts are
 												// terminal — nothing retries — so they stay silent.
+												if (forkHiddenToolError(part)) return null; // Fork: rejected slides calls and node-video gate rejections stay hidden (components/fork-hidden-tool-error.ts).
 												if (
 													part.state === "output-error" &&
 													part.type.startsWith("tool-") &&
@@ -1573,6 +1575,7 @@ export function Chat({
 													case "step-start":
 														if (teachBoundary)
 															return <PhaseDivider key={`teach-step-${pi}`} phase="teach" />;
+														if (forkHiddenStep(m.parts, pi)) return null; // Fork: no separator for a step that holds only hidden retries (components/fork-hidden-tool-error.ts).
 														return pi > 0 ? <Separator key={pi} className="my-3" /> : null;
 													case "data-plan-block":
 														// The plan in the chat (wave 4): a frozen snapshot

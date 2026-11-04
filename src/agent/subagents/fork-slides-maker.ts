@@ -287,7 +287,11 @@ function scriptNumbers(script: ForkSlidesInput): Set<string> {
 function scriptText(script: ForkSlidesInput, continuation?: SlidesMakerContinuation): string {
 	const lines: string[] = [];
 	lines.push(`Title: ${script.title}`);
-	lines.push(`Kind: ${script.kind}`);
+	lines.push(
+		script.kind === "subject"
+			? `Kind: subject video, part ${script.part} of ${script.of} (this part has its own stage; the parts play back to back)`
+			: `Kind: ${script.kind}`,
+	);
 	lines.push("", "STAGE (the fixed diagram, from the teacher):", script.stage, "");
 	script.slides.forEach((slide, i) => {
 		lines.push(`SLIDE ${i + 1} (${slide.steps.length} step${slide.steps.length === 1 ? "" : "s"})`);

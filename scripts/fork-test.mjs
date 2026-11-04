@@ -73,6 +73,8 @@ const SKIPPED_TESTS = [
 	["demo and visual are SERVER-EXECUTED dispatch tools with the contract schemas"],
 	// pins the settings write-side's supported list; the fork adds `slides` (re-asserted in tests/fork-slides.test.ts)
 	["unknown keys are rejected with the supported list (the quiz wedge never persists)"],
+	// its first explain on a node of a 4-node plan meets the fork's node-video gate (rejected once until the next node has a video); tests/fork-node-video-gate.test.ts re-asserts its explain call with the gate satisfied
+	["explain tool call persists as a pending part; the free-text answer reveals the commitment and reaches the model"],
 ];
 
 const escape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

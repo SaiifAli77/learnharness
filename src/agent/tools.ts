@@ -26,6 +26,7 @@ import { grepTool } from "./tools/grep.ts";
 import { createShowImageTool } from "./tools/show-image.ts";
 import { healToolRecord } from "./tools/heal.ts";
 import type { GraphStore } from "../core/ports.ts";
+import { forkNodeVideoGate } from "./fork-slides/node-video-gate.ts";
 
 export { jobTools };
 export type { ProbeDoneContext } from "./tools/probe.ts";
@@ -452,7 +453,7 @@ export function createTeacherTools(
 	return healToolRecord(
 		filterEnabledTools(
 			{
-			...quizzing,
+			...forkNodeVideoGate(quizzing, ctx, enabled),
 			ask_user_question: askUserQuestionTool,
 			// The learner-filesystem set is always-on (user-decided 2026-09,
 			// sources v1): the teacher locates and reads learner-referenced
@@ -466,7 +467,7 @@ export function createTeacherTools(
 			// only, always on — it shows the learner their own file.
 			show_image: createShowImageTool(ctx),
 			...planTools(ctx),
-			...jobTools({ chatId: ctx.chatId, jobStore: ctx.jobStore, spawn: ctx.spawn, searchAvailable: ctx.searchAvailable }),
+			...jobTools(ctx),
 		},
 		withoutMechanics(enabled),
 		),
