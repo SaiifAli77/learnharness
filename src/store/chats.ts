@@ -19,6 +19,7 @@ import type { LhMessage } from "../core/native-messages.ts";
 import { activeProblemOf, danglingQuestionOf } from "../core/native-messages.ts";
 import { phaseAt3Lh } from "../core/phases.ts";
 import { removeLeftoverTemps, writeFileAtomicSync } from "./atomic-write.ts";
+import { forkCachedChat, forkCachedSummary } from "./fork-chat-summaries.ts";
 
 function chatFile(id: string): string {
 	if (!/^[A-Za-z0-9_-]+$/.test(id)) throw new Error(`Invalid chat id: ${id}`);
@@ -84,9 +85,9 @@ function listChats(): ChatSummary[] {
 		return fs
 			.readdirSync(PATHS.chats)
 			.filter((f) => f.endsWith(".json"))
-			.map((f) => getChat(f.slice(0, -5)))
+			.map((f, _i, files) => forkCachedChat(PATHS.chats, f, files, () => getChat(f.slice(0, -5))))
 			.filter((r): r is ChatRecord => r !== null)
-			.map(({ messages, tree, turns, extractions, imageSnapshots: _imageSnapshots, ...summary }) => {
+			.map(forkCachedSummary(({ messages, tree, turns, extractions, imageSnapshots: _imageSnapshots, ...summary }) => {
 				// Per-record isolation (Wave B): a record whose messages fail the
 				// projection (e.g. pre-Wave-B UIMessage-format scratch — the
 				// zero-back-compat wipe makes these "corrupt") must not blank the
@@ -118,7 +119,7 @@ function listChats(): ChatSummary[] {
 					console.error(`[chat ${summary.id}] summary projection failed:`, err);
 					return null;
 				}
-			})
+			}))
 			.filter((s) => s !== null)
 			.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 	} catch {
