@@ -18,6 +18,7 @@ import {
 	FORK_SLIDES_STAGE_FILE,
 	stageFileName,
 	type ForkSlidesInput,
+	type ForkSlidesPartsKind,
 } from "../../core/fork-slides.ts";
 import type { OverlayItem, ResolvedStep } from "./frames.ts";
 
@@ -49,9 +50,9 @@ export function forkSlidesAssetPath(jobId: string, file: string): string | null 
 	return path.dirname(full) === dir ? full : null;
 }
 
-/** Write a finished deck's files (stage, frames, final state). A subject
- *  video part writes its own prefixed stage and no final state (a subject
- *  video is never continued). */
+/** Write a finished deck's files (stage, frames, final state). A subject or
+ *  recap video part writes its own prefixed stage and no final state (neither
+ *  is ever continued). */
 export function writeForkSlidesAssets(
 	jobId: string,
 	files: { stage: string; frames: Array<{ file: string; svg: string }>; states?: ForkSlidesStates; part?: number },
@@ -113,9 +114,9 @@ export function readForkSlidesAsset(jobId: string, file: string): string | null 
 	}
 }
 
-// ─── subject video parts, collected per chat until every part is in ─────────
+// ─── subject and recap video parts, collected per chat until every part is in ─
 
-/** One chat's subject video parts received so far (the same `of` and `minutes` on each). */
+/** One chat's subject (or recap) video parts received so far (the same `of` and `minutes` on each). */
 export interface SubjectPartsCollection {
 	of: number;
 	minutes: number;
@@ -126,13 +127,17 @@ export interface SubjectPartsCollection {
 /** Chat ids the collection accepts: the chat store's own id alphabet, no dots or slashes. */
 const CHAT_ID_RE = /^chat_[A-Za-z0-9_-]{1,60}$/;
 
-function subjectPartsFile(chatId: string): string | null {
-	return CHAT_ID_RE.test(chatId) ? path.join(forkSlidesRoot(), "subject-parts", `${chatId}.json`) : null;
+/** Each parts kind keeps its own collection folder, so a subject video and a
+ *  recap video collected in the same chat never interfere. */
+const PARTS_DIRS: Record<ForkSlidesPartsKind, string> = { subject: "subject-parts", recap: "recap-parts" };
+
+function partsFile(kind: ForkSlidesPartsKind, chatId: string): string | null {
+	return CHAT_ID_RE.test(chatId) ? path.join(forkSlidesRoot(), PARTS_DIRS[kind], `${chatId}.json`) : null;
 }
 
-/** The chat's collected parts; null when none (or an id that is not a chat id). */
-export function readSubjectParts(chatId: string): SubjectPartsCollection | null {
-	const file = subjectPartsFile(chatId);
+/** The chat's collected parts of this kind; null when none (or an id that is not a chat id). */
+export function readPartsCollection(kind: ForkSlidesPartsKind, chatId: string): SubjectPartsCollection | null {
+	const file = partsFile(kind, chatId);
 	if (!file) return null;
 	try {
 		return JSON.parse(fs.readFileSync(file, "utf-8")) as SubjectPartsCollection;
@@ -141,19 +146,24 @@ export function readSubjectParts(chatId: string): SubjectPartsCollection | null 
 	}
 }
 
-export function writeSubjectParts(chatId: string, collection: SubjectPartsCollection): void {
-	const file = subjectPartsFile(chatId);
-	if (!file) throw new Error(`invalid chat id for subject parts: ${chatId}`);
+export function writePartsCollection(kind: ForkSlidesPartsKind, chatId: string, collection: SubjectPartsCollection): void {
+	const file = partsFile(kind, chatId);
+	if (!file) throw new Error(`invalid chat id for ${kind} parts: ${chatId}`);
 	fs.mkdirSync(path.dirname(file), { recursive: true });
 	writeFileAtomicSync(file, JSON.stringify(collection));
 }
 
-export function clearSubjectParts(chatId: string): void {
-	const file = subjectPartsFile(chatId);
+export function clearPartsCollection(kind: ForkSlidesPartsKind, chatId: string): void {
+	const file = partsFile(kind, chatId);
 	if (!file) return;
 	fs.rmSync(file, { force: true });
 	removeLeftoverTemps(file);
 }
+
+/** The subject video's collection (the parts-kind functions above, kind "subject"). */
+export const readSubjectParts = (chatId: string) => readPartsCollection("subject", chatId);
+export const writeSubjectParts = (chatId: string, collection: SubjectPartsCollection) => writePartsCollection("subject", chatId, collection);
+export const clearSubjectParts = (chatId: string) => clearPartsCollection("subject", chatId);
 
 // ─── the orphan sweep (run at the start of each slides job) ─────────────────
 
@@ -161,7 +171,7 @@ export function clearSubjectParts(chatId: string): void {
 const JOBS_DIR = path.join(PATHS.data, "jobs");
 
 /** Remove what deleted chats left behind: job asset folders (job-id names
- *  only) whose job file is gone, and subject-part collections (with any
+ *  only) whose job file is gone, and subject- and recap-part collections (with any
  *  atomic-write temp files `<chatId>.json.tmp-…`) whose chat file is gone
  *  (the chat store keeps each chat at <PATHS.chats>/<id>.json). Existence is
  *  read from the files, never from a parse that can fail transiently.
@@ -179,14 +189,16 @@ export function sweepForkSlidesOrphans(): void {
 		}
 	}
 	if (!fs.existsSync(PATHS.chats)) return; // no chat folder to check against: keep every collection
-	try {
-		const chatIds = new Set<string>();
-		for (const name of fs.readdirSync(path.join(root, "subject-parts"))) {
-			const chatId = /^(.+)\.json(?:\.tmp-.+)?$/.exec(name)?.[1];
-			if (chatId && CHAT_ID_RE.test(chatId)) chatIds.add(chatId);
+	for (const kind of Object.keys(PARTS_DIRS) as ForkSlidesPartsKind[]) {
+		try {
+			const chatIds = new Set<string>();
+			for (const name of fs.readdirSync(path.join(root, PARTS_DIRS[kind]))) {
+				const chatId = /^(.+)\.json(?:\.tmp-.+)?$/.exec(name)?.[1];
+				if (chatId && CHAT_ID_RE.test(chatId)) chatIds.add(chatId);
+			}
+			for (const chatId of chatIds) if (!fs.existsSync(path.join(PATHS.chats, `${chatId}.json`))) clearPartsCollection(kind, chatId);
+		} catch {
+			/* no collections of this kind */
 		}
-		for (const chatId of chatIds) if (!fs.existsSync(path.join(PATHS.chats, `${chatId}.json`))) clearSubjectParts(chatId);
-	} catch {
-		/* no collections */
 	}
 }

@@ -21,6 +21,7 @@ import {
 	frameFileName,
 	FORK_SLIDES_HTML_PLACEHOLDER,
 	isForkSlidesInput,
+	isPartsJobInput,
 	stageFileName,
 	type ForkSlidesDeck,
 	type ForkSlidesInput,
@@ -69,15 +70,15 @@ interface LoopLike {
 	onUsage: (step: UsageStepLike) => void;
 }
 
-/** One drawn script: a deck or node video, or one subject video part. */
+/** One drawn script: a deck or node video, or one subject or recap video part. */
 interface DrawnPart {
-	/** The subject part number; undefined for a deck or node video. */
+	/** The subject or recap part number; undefined for a deck or node video. */
 	part?: number;
 	script: ForkSlidesInput;
 	made: Extract<SlidesMakerResult, { ok: true }>;
 }
 
-/** A subject part that still failed after its retry. */
+/** A subject or recap part that still failed after its retry. */
 interface MissingPart {
 	part: number;
 	notes: string;
@@ -93,15 +94,18 @@ function deliveredNotes(job: JobRecord, input: ForkSlidesJobInput, deck: ForkSli
 		? `It is narrated (${formatClock(deckTimeline(deck)?.total ?? 0)} with the pauses between steps); the learner can play it or flip through it.`
 		: `It has NO narration audio (${narration.reason}); the learner flips through it and reads the transcript under each slide. Mention that the audio is missing only if the learner asks.`;
 	const helper = `Helper notes: ${drawn.map((d) => (d.part ? `part ${d.part}: ${d.made.notes}` : d.made.notes)).join(" ")}`;
-	if (input.kind === "subject") {
+	if (isPartsJobInput(input)) {
 		const what =
-			`This is not an interactive demo: it is the narrated subject video, ${drawn.length} of ${input.of} parts played straight ` +
+			`This is not an interactive demo: it is the narrated ${input.kind} video, ${drawn.length} of ${input.of} parts played straight ` +
 			`through as one video (${plural(slides, "slide")}, ${plural(steps, "build step")}), rendered in the lesson.`;
 		const gaps = missing.map(
 			(m) =>
 				`Part ${m.part} of ${input.of} could not be drawn (${m.notes}), so the video skips that stretch: cover your part ${m.part} script in prose once the learner has watched the video.`,
 		);
-		const next = "Stop the invention questions now: tell the learner to watch it and to send a message when done; begin node 1 after that. Do not retell it.";
+		const next =
+			input.kind === "recap"
+				? "Tell the learner to watch it. Do not retell it."
+				: "Stop the invention questions now: tell the learner to watch it and to send a message when done; begin node 1 after that. Do not retell it.";
 		return [what, audio, ...gaps, next, helper].join(" ");
 	}
 	const what =
@@ -139,7 +143,7 @@ export async function runForkSlidesJob(jobId: string, engine: PiEngine, loop: Lo
 		const drawn: DrawnPart[] = [];
 		const missing: MissingPart[] = [];
 		jobStore.updateJob(jobId, { activity: "drawing slides" });
-		if (input.kind === "subject") {
+		if (isPartsJobInput(input)) {
 			// Every part draws at once, each on its own stage; a failed part is
 			// retried once (never after an abort), then left out.
 			const results = await Promise.all(
@@ -154,7 +158,7 @@ export async function runForkSlidesJob(jobId: string, engine: PiEngine, loop: Lo
 				else missing.push({ part: i + 1, notes: made.notes.replace(/^FAILED:\s*/, "") });
 			});
 			if (!drawn.length) {
-				await fail(`FAILED: no part of the subject video could be drawn (each was retried once). ${missing.map((m) => `Part ${m.part}: ${m.notes}`).join(" ")}`);
+				await fail(`FAILED: no part of the ${input.kind} video could be drawn (each was retried once). ${missing.map((m) => `Part ${m.part}: ${m.notes}`).join(" ")}`);
 				return;
 			}
 		} else {
@@ -229,7 +233,7 @@ export async function runForkSlidesJob(jobId: string, engine: PiEngine, loop: Lo
 					}),
 				})),
 			),
-			...(input.kind === "subject" ? { parts: { of: input.of, missing: missing.map((m) => m.part), calls: input.calls } } : {}),
+			...(isPartsJobInput(input) ? { parts: { of: input.of, missing: missing.map((m) => m.part), calls: input.calls } } : {}),
 		};
 		const result: ForkSlidesResult = {
 			title,

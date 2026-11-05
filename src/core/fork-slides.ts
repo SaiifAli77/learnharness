@@ -28,11 +28,11 @@ export interface ForkSlidesStepInput {
 /** The teacher's `slides` call, exactly as the tool schema takes it. */
 export interface ForkSlidesInput {
 	title: string;
-	kind: "deck" | "video" | "subject";
+	kind: "deck" | "video" | ForkSlidesPartsKind;
 	continues?: string;
 	/** kind "video": the plan node the video is for. */
 	nodeId?: string;
-	/** kind "subject": this part's number (1-based), the part count, and the learner's length pick in minutes. */
+	/** kind "subject" or "recap": this part's number (1-based), the part count, and the learner's length pick in minutes. */
 	part?: number;
 	of?: number;
 	minutes?: number;
@@ -40,9 +40,17 @@ export interface ForkSlidesInput {
 	slides: { steps: ForkSlidesStepInput[] }[];
 }
 
-/** The most parts one subject video may have. */
+/** The kinds sent in parts and built as one video: the subject video and
+ *  the recap video (this session retold). Each kind has its own collection. */
+export type ForkSlidesPartsKind = "subject" | "recap";
+
+export function isPartsKind(kind: unknown): kind is ForkSlidesPartsKind {
+	return kind === "subject" || kind === "recap";
+}
+
+/** The most parts one subject (or recap) video may have. */
 export const SUBJECT_MAX_PARTS = 8;
-/** The longest subject video, in minutes. */
+/** The longest subject (or recap) video, in minutes. */
 export const SUBJECT_MAX_MINUTES = 25;
 
 /** The key that marks a demo job's saved input as a slides job. */
@@ -54,9 +62,9 @@ export const FORK_SLIDES_MARKER = "forkSlides";
  *  the client bundle can import it without server modules. */
 export const NODE_VIDEO_GATE_MARKER = "Node videos are built ahead";
 
-/** A subject video's job input: every part, in order (parts[i] is part i + 1). */
+/** A subject or recap video's job input: every part, in order (parts[i] is part i + 1). */
 export interface ForkSlidesSubjectInput {
-	kind: "subject";
+	kind: ForkSlidesPartsKind;
 	/** Part 1's title. */
 	title: string;
 	of: number;
@@ -69,8 +77,13 @@ export interface ForkSlidesSubjectInput {
 	nodeVideosAck?: string;
 }
 
-/** The saved job input: the call (or, for a subject video, all its parts) plus the marker. */
+/** The saved job input: the call (or, for a subject or recap video, all its parts) plus the marker. */
 export type ForkSlidesJobInput = ((ForkSlidesInput & { kind: "deck" | "video" }) | ForkSlidesSubjectInput) & { [FORK_SLIDES_MARKER]: true };
+
+/** True for a subject or recap video's job input (every part in one job). */
+export function isPartsJobInput(input: ForkSlidesJobInput): input is ForkSlidesSubjectInput & { [FORK_SLIDES_MARKER]: true } {
+	return isPartsKind(input.kind);
+}
 
 /** One build step as stored in the result: its narration and its frame file. */
 export interface ForkSlidesStep {
@@ -86,12 +99,12 @@ export interface ForkSlidesStep {
 export interface ForkSlidesDeck {
 	version: 1;
 	jobId: string;
-	kind: "deck" | "video" | "subject";
-	/** The stage SVG's file name in the job's asset folder (a subject video: its first drawn part's). */
+	kind: "deck" | "video" | ForkSlidesPartsKind;
+	/** The stage SVG's file name in the job's asset folder (a subject or recap video: its first drawn part's). */
 	stage: string;
-	/** A subject video's slides carry their part number; all parts play as one timeline. */
+	/** A subject or recap video's slides carry their part number; all parts play as one timeline. */
 	slides: { steps: ForkSlidesStep[]; part?: number }[];
-	/** Subject video only: the part count, the parts that could not be drawn,
+	/** Subject and recap videos only: the part count, the parts that could not be drawn,
 	 *  and each part's call id in part order (calls[i] is part i + 1). */
 	parts?: { of: number; missing: number[]; calls: string[] };
 }
@@ -115,7 +128,7 @@ export function isForkSlidesResult(result: unknown): result is ForkSlidesResult 
 	return typeof deck === "object" && deck !== null && deck.version === 1 && Array.isArray(deck.slides) && typeof deck.jobId === "string";
 }
 
-/** A subject video part's file-name prefix ("p3-"); none for a deck or node video. */
+/** A subject or recap video part's file-name prefix ("p3-"); none for a deck or node video. */
 function partPrefix(part?: number): string {
 	return part === undefined ? "" : `p${part}-`;
 }
@@ -145,7 +158,7 @@ export function audioFileName(slide: number, step: number, part?: number): strin
 	return `${partPrefix(part)}audio-${String(slide).padStart(2, "0")}-${step}.ogg`;
 }
 
-/** The part number and count of a subject part's "received" ACK, else null
+/** The part number and count of a subject or recap part's "received" ACK, else null
  *  (the tool part of a part that did not complete the video has no job). */
 export function subjectPartReceived(output: unknown): { part: number; of: number } | null {
 	const m = typeof output === "string" ? /^Part (\d+) of (\d+) received/.exec(output) : null;
@@ -173,15 +186,19 @@ export function forkSlidesFlatSteps(deck: ForkSlidesDeck): Array<{ slide: number
  *  blank line. Tolerates partial (streaming) and malformed arguments; never
  *  throws. undefined for any other block or a call with no `say` text.
  *  Hooked into upstream's userFacingTextOf, so coverage/extraction and the
- *  session Markdown read what the deck taught. */
+ *  session Markdown read what the deck taught. A recap call (kind "recap")
+ *  is never teacher prose, delivered or not: it retells what the session
+ *  already taught, so its narration stays out of the knowledge graph and the
+ *  Markdown export, and a delivered recap never changes a message's coverage
+ *  fingerprint (this is the only place slides narration enters userFacingTextOf). */
 export function forkSlidesNarration(block: unknown): string | undefined {
 	try {
 		if (!block || typeof block !== "object") return undefined;
 		const call = block as { type?: unknown; name?: unknown; arguments?: unknown };
 		if (call.type !== "toolCall" || call.name !== "slides") return undefined;
 		if (!call.arguments || typeof call.arguments !== "object") return undefined;
-		const args = call.arguments as { title?: unknown; slides?: unknown };
-		if (!Array.isArray(args.slides)) return undefined;
+		const args = call.arguments as { title?: unknown; kind?: unknown; slides?: unknown };
+		if (args.kind === "recap" || !Array.isArray(args.slides)) return undefined;
 		const paragraphs: string[] = [];
 		for (const slide of args.slides) {
 			const steps = slide && typeof slide === "object" ? (slide as { steps?: unknown }).steps : undefined;
@@ -203,20 +220,21 @@ export function forkSlidesNarration(block: unknown): string | undefined {
 
 /** Which slides calls were delivered, read from the transcript's
  *  `subagent-steer` messages that carry a drawn slides result. `slim`: every
- *  delivered call (a subject video: all its part calls, a missing part too).
- *  `narrated`: the calls whose narration the learner actually got (a subject
- *  video's missing parts excluded). One pass; pure. */
+ *  delivered call (a subject or recap video: all its part calls, a missing
+ *  part too). `narrated`: the calls whose narration counts as teacher prose
+ *  (a subject video's missing parts excluded; a recap video's calls never).
+ *  One pass; pure. */
 export function forkSlidesDelivered(messages: readonly unknown[]): { narrated: Set<string>; slim: Set<string> } {
 	const narrated = new Set<string>();
 	const slim = new Set<string>();
 	for (const message of messages) {
 		const m = message as { role?: unknown; customType?: unknown; details?: { toolCallId?: unknown; result?: unknown } };
 		if (m.role !== "custom" || m.customType !== "subagent-steer" || !isForkSlidesResult(m.details?.result)) continue;
-		const parts = m.details.result.forkSlides.parts;
+		const { parts, kind } = m.details.result.forkSlides;
 		if (parts) {
 			parts.calls.forEach((id, i) => {
 				slim.add(id);
-				if (!parts.missing.includes(i + 1)) narrated.add(id);
+				if (kind !== "recap" && !parts.missing.includes(i + 1)) narrated.add(id);
 			});
 		} else if (typeof m.details.toolCallId === "string") {
 			slim.add(m.details.toolCallId);
@@ -229,7 +247,7 @@ export function forkSlidesDelivered(messages: readonly unknown[]): { narrated: S
 /** Add to upstream's failed-output set every slides call whose narration
  *  the learner did not get: not (yet) delivered and drawn (still building,
  *  failed, rejected, a replaced subject part, a part of a restarted or
- *  unfinished collection, a missing part), or sitting in an errored/aborted
+ *  unfinished collection, a missing part, any recap part), or sitting in an errored/aborted
  *  assistant message (mirroring the send_to_user rule in
  *  failedOutputCallIds). Needs the whole transcript: the delivering steer
  *  comes after the call. */

@@ -3,8 +3,8 @@
  * method and slide decks"). A slides call carries the whole script (stage,
  * show, pointer, numbers with expressions, say), and history is resent every
  * turn. Once a call is delivered (a drawn slides result arrived; for a
- * subject video, every part call once the video arrived, a missing part
- * too), the model sees its arguments reduced to the title, kind, the
+ * subject or recap video, every part call once the video arrived, a missing
+ * part too), the model sees its arguments reduced to the title, kind, the
  * node/part fields, the stage (so a later `continues` deck can name the same
  * parts and colours) and the narration per slide, plus a note that the rest
  * was trimmed. Calls still building, rejected, failed, aborted or never

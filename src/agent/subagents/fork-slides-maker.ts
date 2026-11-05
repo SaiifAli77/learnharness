@@ -5,7 +5,7 @@ import { Type } from "typebox";
 import { processImage } from "../image-processing/index.ts";
 import type { PiEngine } from "../models.ts";
 import { providerEventObserver } from "../provider-events.ts";
-import { frameFileName, type ForkSlidesInput } from "../../core/fork-slides.ts";
+import { frameFileName, isPartsKind, type ForkSlidesInput } from "../../core/fork-slides.ts";
 import {
 	assembleFrame,
 	parseStage,
@@ -288,8 +288,8 @@ function scriptText(script: ForkSlidesInput, continuation?: SlidesMakerContinuat
 	const lines: string[] = [];
 	lines.push(`Title: ${script.title}`);
 	lines.push(
-		script.kind === "subject"
-			? `Kind: subject video, part ${script.part} of ${script.of} (this part has its own stage; the parts play back to back)`
+		isPartsKind(script.kind)
+			? `Kind: ${script.kind} video, part ${script.part} of ${script.of} (this part has its own stage; the parts play back to back)`
 			: `Kind: ${script.kind}`,
 	);
 	lines.push("", "STAGE (the fixed diagram, from the teacher):", script.stage, "");

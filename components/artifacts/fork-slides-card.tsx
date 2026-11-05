@@ -58,8 +58,8 @@ export { isForkSlidesResult };
  * that would trap position: fixed.
  */
 
-/** The `slides` tool part (the artifact registry's renderer): a subject
- *  video part that did not complete the video has no job of its own, so it
+/** The `slides` tool part (the artifact registry's renderer): a subject or
+ *  recap video part that did not complete the video has no job of its own, so it
  *  shows a quiet "received" line; every other call is upstream's demo
  *  dispatch card. */
 export function ForkSlidesDispatchCard({ part }: ArtifactPartProps) {
@@ -75,7 +75,12 @@ export function ForkSlidesDispatchCard({ part }: ArtifactPartProps) {
 	);
 }
 
-/** The visible note for subject video parts that could not be drawn ("" when none). Pure. */
+/** The kind label above the card's title (the CSS uppercases it). Pure. */
+export function forkSlidesKindLabel(kind: ForkSlidesDeck["kind"]): string {
+	return kind === "deck" ? "slides" : kind === "recap" ? "recap video" : "video";
+}
+
+/** The visible note for subject or recap video parts that could not be drawn ("" when none). Pure. */
 export function missingPartsNote(deck: ForkSlidesDeck): string {
 	return (deck.parts?.missing ?? []).map((p) => `Part ${p} of ${deck.parts!.of} could not be drawn.`).join(" ");
 }
@@ -391,7 +396,7 @@ export function ForkSlidesCard({
 		>
 			<div className="mb-2 flex min-w-0 items-baseline gap-2">
 				<span className="shrink-0 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-					{deck.kind === "deck" ? "slides" : "video"}
+					{forkSlidesKindLabel(deck.kind)}
 				</span>
 				<span className="truncate text-xs font-medium tracking-wide text-foreground">{result.title}</span>
 			</div>

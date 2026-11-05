@@ -15,6 +15,8 @@
  * covered by a node video job for it that is running or done, and excused
  * when the newest node video job for it ended in error (no rejection loop
  * when that node's video keeps failing; a failure elsewhere excuses nothing).
+ * A recap video job is neither: it never counts as a node video or as the
+ * subject video, so a running, done or failed recap changes nothing here.
  *
  * "Reached" is read from the chat record's persisted messages with
  * upstream's plan-position fold (derivePlanStatusesLh: the current node plus

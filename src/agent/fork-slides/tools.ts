@@ -17,14 +17,16 @@ import type { JobRecord } from "../../core/contracts.ts";
 import {
 	FORK_SLIDES_MARKER,
 	isForkSlidesInput,
+	isPartsKind,
 	SUBJECT_MAX_MINUTES,
 	SUBJECT_MAX_PARTS,
 	type ForkSlidesInput,
 	type ForkSlidesJobInput,
+	type ForkSlidesPartsKind,
 	type ForkSlidesSubjectInput,
 } from "../../core/fork-slides.ts";
 import { checkNumber } from "./expr.ts";
-import { clearSubjectParts, readSubjectParts, writeSubjectParts, type SubjectPartsCollection } from "./storage.ts";
+import { clearPartsCollection, readPartsCollection, writePartsCollection, type SubjectPartsCollection } from "./storage.ts";
 import { getHeadless } from "../subagents/headless.ts";
 import { nextVideoTargets, nodeLabel, nodeVideoJobs, pendingNodeVideoGate, reachedNodes } from "./node-video-gate.ts";
 
@@ -42,10 +44,10 @@ export const VIDEO_MAX_WORDS = 850;
 export const NODE_VIDEO_TARGET_WORDS = 550;
 /** Spoken words per minute of narration. */
 export const WORDS_PER_MINUTE = 135;
-/** The most minutes of narration one subject part may carry (minutes ÷ of). */
+/** The most minutes of narration one subject (or recap) part may carry (minutes ÷ of). */
 export const SUBJECT_MAX_PART_MINUTES = 7;
 
-/** The spoken words each part of a subject video of `minutes` in `of` parts
+/** The spoken words each part of a subject (or recap) video of `minutes` in `of` parts
  *  must have: 80–120% of its share, minutes ÷ of × WORDS_PER_MINUTE. Integer
  *  math (108 and 162 are 80% and 120% of 135), so the bounds are exact. */
 export function subjectPartWordRange(minutes: number, of: number): { min: number; max: number } {
@@ -53,10 +55,11 @@ export function subjectPartWordRange(minutes: number, of: number): { min: number
 }
 
 export const slidesInputSchema = Type.Object({
-	title: Type.String({ description: "Card title (a subject video's card shows part 1's title)." }),
-	kind: Type.Union([Type.Literal("subject"), Type.Literal("video"), Type.Literal("deck")], {
+	title: Type.String({ description: "Card title (a subject or recap video's card shows part 1's title)." }),
+	kind: Type.Union([Type.Literal("subject"), Type.Literal("recap"), Type.Literal("video"), Type.Literal("deck")], {
 		description:
 			'"subject": one part of the subject video, the whole subject end to end as one story (set part, of and minutes). ' +
+			'"recap": one part of the recap video, what the learner learned in this session retold end to end as one story (set part, of and minutes, as for "subject"). ' +
 			'"video": a node video of 400–850 spoken words (aim for about 550 words, about 50–60 steps), for the plan node in nodeId, built two nodes ahead. ' +
 			'"deck": a short deck (about 5–15 slides), only when the learner asks for one.',
 	}),
@@ -64,14 +67,14 @@ export const slidesInputSchema = Type.Object({
 		Type.String({ description: 'kind "video" only, and required there: the plan node this video is for (an exact plan_init slug).' }),
 	),
 	part: Type.Optional(
-		Type.Integer({ minimum: 1, description: 'kind "subject" only: this part\'s number, 1-based. Sending a part number again replaces that part.' }),
+		Type.Integer({ minimum: 1, description: 'kind "subject" or "recap" only: this part\'s number, 1-based. Sending a part number again replaces that part.' }),
 	),
 	of: Type.Optional(
-		Type.Integer({ minimum: 1, description: `kind "subject" only: how many parts the video has (at most ${SUBJECT_MAX_PARTS}); the same on every part.` }),
+		Type.Integer({ minimum: 1, description: `kind "subject" or "recap" only: how many parts the video has (at most ${SUBJECT_MAX_PARTS}); the same on every part.` }),
 	),
 	minutes: Type.Optional(
 		Type.Integer({
-			description: `kind "subject" only: the length the learner picked, in whole minutes (at most ${SUBJECT_MAX_MINUTES}); the same on every part. Each part must have 80–120% of minutes ÷ of × ${WORDS_PER_MINUTE} spoken words, and minutes ÷ of is at most ${SUBJECT_MAX_PART_MINUTES}.`,
+			description: `kind "subject" or "recap" only: the length the learner picked, in whole minutes (at most ${SUBJECT_MAX_MINUTES}); the same on every part. Each part must have 80–120% of minutes ÷ of × ${WORDS_PER_MINUTE} spoken words, and minutes ÷ of is at most ${SUBJECT_MAX_PART_MINUTES}.`,
 		}),
 	),
 	continues: Type.Optional(
@@ -98,10 +101,10 @@ export const slidesInputSchema = Type.Object({
 						),
 					),
 				}),
-				{ minItems: 1, description: "1–6 build steps per slide; 120 steps per deck (per part for a subject video)." },
+				{ minItems: 1, description: "1–6 build steps per slide; 120 steps per deck (per part for a subject or recap video)." },
 			),
 		}),
-		{ minItems: 1, description: "1–45 slides (per part for a subject video)." },
+		{ minItems: 1, description: "1–45 slides (per part for a subject or recap video)." },
 	),
 });
 
@@ -114,6 +117,7 @@ const SLIDES_DESCRIPTION =
 	"for this session and the video is built once parts 1 to `of` are all in, as one video that plays straight through. Sending a " +
 	"part number again replaces that part. Every part carries the same `of` and `minutes`; part 1 sent with a different `of` or " +
 	"`minutes` starts the video over (the parts received so far are dropped), and any other part that disagrees is rejected. " +
+	"A recap video (kind \"recap\") is sent the same way, in parts with part, of and minutes, and collected separately from the subject video. " +
 	"The call is ASYNC: it resolves immediately and the video or deck arrives later as a new message.";
 
 const DECK_ACK =
@@ -131,6 +135,12 @@ const SUBJECT_ACK =
 	"subject from the start: pose the problem it solves and ask, one question at a time with ask_user_question (not quiz or " +
 	"explain), how they would attack it, reacting to each attempt in a line without giving the answer away. Do not wait, poll, " +
 	"or mention waiting. When it arrives, stop asking: tell the learner to watch it and to send a message when done; begin node 1 after that.";
+const RECAP_ACK =
+	"The recap video is built from every part and arrives as a new message. Tell the learner the recap video is being built and " +
+	"will arrive as a new message, then wait: no questions and no teaching meanwhile (no quiz, explain or ask_user_question). " +
+	"When it arrives, tell the learner to watch it.";
+/** The completing part's ACK for each parts kind. */
+const PARTS_ACK: Record<ForkSlidesPartsKind, string> = { subject: SUBJECT_ACK, recap: RECAP_ACK };
 
 /** Count spoken words across every step's `say`. */
 export function spokenWords(input: Pick<ForkSlidesInput, "slides">): number {
@@ -139,7 +149,7 @@ export function spokenWords(input: Pick<ForkSlidesInput, "slides">): number {
 	return n;
 }
 
-/** The parts already collected that a subject part joins: null when there
+/** The parts already collected that a subject or recap part joins: null when there
  *  are none, or when part 1 arrives with a different `of`/`minutes` (it
  *  starts the video over); "mismatch" when a later part disagrees (rejected). */
 function joinedCollection(input: ForkSlidesInput, collection: SubjectPartsCollection | null): SubjectPartsCollection | null | "mismatch" {
@@ -148,15 +158,17 @@ function joinedCollection(input: ForkSlidesInput, collection: SubjectPartsCollec
 	return input.part === 1 ? null : "mismatch";
 }
 
-/** The subject-only checks: part/of/minutes, the length cap, at most
- *  SUBJECT_MAX_PART_MINUTES per part and this part's own word range (per part,
- *  independent of the other parts), then the collection checks. */
-function subjectProblems(input: ForkSlidesInput, chatId: string): string[] {
+/** The checks for a part of a subject or recap video (the same rules for
+ *  both, the messages naming the kind): part/of/minutes, the length cap, at
+ *  most SUBJECT_MAX_PART_MINUTES per part and this part's own word range (per
+ *  part, independent of the other parts), then the checks against the
+ *  collection of the same kind. */
+function subjectProblems(input: ForkSlidesInput, kind: ForkSlidesPartsKind, chatId: string): string[] {
 	const { part, of, minutes } = input;
 	if (part === undefined || of === undefined || minutes === undefined)
-		return ["a subject part needs part, of and minutes (the same of and minutes on every part)."];
+		return [`a ${kind} part needs part, of and minutes (the same of and minutes on every part).`];
 	const problems: string[] = [];
-	if (of > SUBJECT_MAX_PARTS) problems.push(`of: ${of} parts; a subject video has at most ${SUBJECT_MAX_PARTS}.`);
+	if (of > SUBJECT_MAX_PARTS) problems.push(`of: ${of} parts; a ${kind} video has at most ${SUBJECT_MAX_PARTS}.`);
 	if (part > of) problems.push(`part ${part} of ${of}: the part number cannot exceed of.`);
 	if (minutes > SUBJECT_MAX_MINUTES)
 		problems.push(
@@ -164,9 +176,9 @@ function subjectProblems(input: ForkSlidesInput, chatId: string): string[] {
 		);
 	else if (!(minutes >= 1)) problems.push(`minutes: ${minutes}; the video needs at least 1 minute.`);
 	else problems.push(...partLengthProblems(input, part, of, minutes));
-	if (input.continues !== undefined) problems.push("continues: a subject part never continues another deck; drop it.");
+	if (input.continues !== undefined) problems.push(`continues: a ${kind} part never continues another deck; drop it.`);
 	if (problems.length) return problems;
-	return collectionProblems(input, readSubjectParts(chatId));
+	return collectionProblems(input, readPartsCollection(kind, chatId));
 }
 
 /** At most SUBJECT_MAX_PART_MINUTES per part (else how many parts are needed),
@@ -265,7 +277,7 @@ export function slidesInputProblems(
 		const node = videoNodeProblem(input.nodeId, ctx);
 		if (node) problems.push(node);
 	}
-	if (input.kind === "subject") problems.push(...subjectProblems(input, ctx.chatId));
+	if (isPartsKind(input.kind)) problems.push(...subjectProblems(input, input.kind, ctx.chatId));
 	input.slides.forEach((slide, i) =>
 		slide.steps.forEach((step, j) =>
 			(step.numbers ?? []).forEach((num, k) => {
@@ -274,12 +286,12 @@ export function slidesInputProblems(
 			}),
 		),
 	);
-	if (input.continues !== undefined && input.kind !== "subject") {
+	if (input.continues !== undefined && !isPartsKind(input.kind)) {
 		const earlier = ctx.jobStore.findJobByToolCallId(ctx.chatId, input.continues);
 		if (!earlier || earlier.kind !== "demo" || !isForkSlidesInput(earlier.input)) {
 			problems.push(`continues: "${input.continues}" is not the toolCallId of an earlier slides call in this session.`);
-		} else if (earlier.input.kind === "subject") {
-			problems.push(`continues: "${input.continues}" is the subject video, which has one stage per part and cannot be continued.`);
+		} else if (isPartsKind(earlier.input.kind)) {
+			problems.push(`continues: "${input.continues}" is the ${earlier.input.kind} video, which has one stage per part and cannot be continued.`);
 		} else if (earlier.status !== "done") {
 			problems.push(
 				`continues: the deck "${input.continues}" is ${earlier.status === "running" ? "still being built" : "a failed build"}, so there is no deck to continue yet.`,
@@ -289,13 +301,14 @@ export function slidesInputProblems(
 	return problems;
 }
 
-/** Collect one subject part; when parts 1..of are all in, create the one
- *  subject job and clear the collection. Synchronous from read to write (the
- *  collection checks run again here), so parts dispatched together cannot
- *  interleave. Returns the ACK, or the problems that reject the part. */
-function dispatchSubjectPart(ctx: ForkSlidesToolContext, toolCallId: string, input: ForkSlidesInput): string | { problems: string[] } {
+/** Collect one subject or recap part into its kind's collection; when parts
+ *  1..of are all in, create the one job of that kind and clear the
+ *  collection. Synchronous from read to write (the collection checks run
+ *  again here), so parts dispatched together cannot interleave. Returns the
+ *  ACK, or the problems that reject the part. */
+function dispatchSubjectPart(ctx: ForkSlidesToolContext, toolCallId: string, input: ForkSlidesInput, kind: ForkSlidesPartsKind): string | { problems: string[] } {
 	const of = input.of!;
-	const collection = readSubjectParts(ctx.chatId);
+	const collection = readPartsCollection(kind, ctx.chatId);
 	const problems = collectionProblems(input, collection);
 	if (problems.length) return { problems };
 	const joined = joinedCollection(input, collection);
@@ -303,11 +316,11 @@ function dispatchSubjectPart(ctx: ForkSlidesToolContext, toolCallId: string, inp
 	const parts = [...kept, { toolCallId, input }].sort((a, b) => a.input.part! - b.input.part!);
 	const missing = Array.from({ length: of }, (_, i) => i + 1).filter((n) => !parts.some((p) => p.input.part === n));
 	if (missing.length) {
-		writeSubjectParts(ctx.chatId, { of, minutes: input.minutes!, parts });
+		writePartsCollection(kind, ctx.chatId, { of, minutes: input.minutes!, parts });
 		return `Part ${input.part} of ${of} received; send the rest (still missing: part${missing.length === 1 ? "" : "s"} ${missing.join(", ")}).`;
 	}
 	const marked: ForkSlidesJobInput = {
-		kind: "subject",
+		kind,
 		title: parts[0]!.input.title,
 		of,
 		minutes: input.minutes!,
@@ -315,17 +328,17 @@ function dispatchSubjectPart(ctx: ForkSlidesToolContext, toolCallId: string, inp
 		calls: parts.map((p) => p.toolCallId),
 		[FORK_SLIDES_MARKER]: true,
 	};
-	const nodeVideos = firstNodeVideosAck(ctx);
+	const nodeVideos = kind === "subject" ? firstNodeVideosAck(ctx) : null;
 	if (nodeVideos) (marked as ForkSlidesSubjectInput).nodeVideosAck = nodeVideos;
 	const job = ctx.jobStore.createJob({ kind: "demo", chatId: ctx.chatId, toolCallId, input: marked });
-	clearSubjectParts(ctx.chatId);
+	clearPartsCollection(kind, ctx.chatId);
 	ctx.spawn(job, marked as never);
 	return completedAck(job.id, marked as ForkSlidesSubjectInput);
 }
 
-/** The completing part's ACK: the subject ACK, plus the line naming the first node videos. */
+/** The completing part's ACK: the kind's ACK, plus (subject video) the line naming the first node videos. */
 function completedAck(jobId: string, input: ForkSlidesSubjectInput): string {
-	return `Dispatched (job ${jobId}). ${SUBJECT_ACK}${input.nodeVideosAck ? ` ${input.nodeVideosAck}` : ""}`;
+	return `Dispatched (job ${jobId}). ${PARTS_ACK[input.kind]}${input.nodeVideosAck ? ` ${input.nodeVideosAck}` : ""}`;
 }
 
 /** When the subject video dispatches: the line asking for the videos of
@@ -342,11 +355,11 @@ function firstNodeVideosAck(ctx: ForkSlidesToolContext): string | null {
 		: `Now, before the invention questions, build the node videos for ${targets.map(nodeLabel).join(" and ")}: one slides call each, kind "video".`;
 }
 
-/** The saved subject video job a part call already went into (a replay of that call), if any. */
+/** The saved subject or recap video job a part call already went into (a replay of that call), if any. */
 function subjectJobOf(ctx: ForkSlidesToolContext, toolCallId: string): JobRecord | undefined {
 	return ctx.jobStore
 		.listJobs(ctx.chatId)
-		.find((j) => j.kind === "demo" && isForkSlidesInput(j.input) && j.input.kind === "subject" && j.input.calls.includes(toolCallId));
+		.find((j) => j.kind === "demo" && isForkSlidesInput(j.input) && isPartsKind(j.input.kind) && (j.input as ForkSlidesSubjectInput).calls.includes(toolCallId));
 }
 
 /** The ACK a replayed part call originally got: the completing call's
@@ -356,16 +369,16 @@ function replayAck(job: JobRecord, toolCallId: string): string {
 	return toolCallId === job.toolCallId ? completedAck(job.id, input) : `Part ${input.calls.indexOf(toolCallId) + 1} of ${input.of} received.`;
 }
 
-/** Clear a collection left behind by a crash between creating the subject
- *  job and clearing it: every collected call is already in one saved subject
- *  job. A collection with any call not consumed is kept. */
-function discardConsumedCollection(ctx: ForkSlidesToolContext): void {
-	const collection = readSubjectParts(ctx.chatId);
+/** Clear a collection of this kind left behind by a crash between creating
+ *  its job and clearing it: every collected call is already in one saved job
+ *  of the same kind. A collection with any call not consumed is kept. */
+function discardConsumedCollection(ctx: ForkSlidesToolContext, kind: ForkSlidesPartsKind): void {
+	const collection = readPartsCollection(kind, ctx.chatId);
 	if (!collection?.parts.length) return;
 	const consumed = ctx.jobStore
 		.listJobs(ctx.chatId)
-		.some((j) => isForkSlidesInput(j.input) && j.input.kind === "subject" && collection.parts.every((p) => (j.input as ForkSlidesSubjectInput).calls.includes(p.toolCallId)));
-	if (consumed) clearSubjectParts(ctx.chatId);
+		.some((j) => isForkSlidesInput(j.input) && j.input.kind === kind && collection.parts.every((p) => (j.input as ForkSlidesSubjectInput).calls.includes(p.toolCallId)));
+	if (consumed) clearPartsCollection(kind, ctx.chatId);
 }
 
 /** The slides tool, keyed for spreading into jobTools(). */
@@ -377,7 +390,7 @@ export function forkSlidesTools(ctx: ForkSlidesToolContext): Record<string, Agen
 		// The spawn seam's input type lists upstream's tool inputs; the runner
 		// hook narrows a slides job by its marker.
 		if (!existing) ctx.spawn(job, marked as never);
-		return `Dispatched (job ${job.id}). ${input.kind === "subject" ? SUBJECT_ACK : input.kind === "video" ? VIDEO_ACK : DECK_ACK}`;
+		return `Dispatched (job ${job.id}). ${isPartsKind(input.kind) ? PARTS_ACK[input.kind] : input.kind === "video" ? VIDEO_ACK : DECK_ACK}`;
 	});
 	return {
 		slides: {
@@ -389,16 +402,17 @@ export function forkSlidesTools(ctx: ForkSlidesToolContext): Record<string, Agen
 			// parts collected before them.
 			executionMode: "sequential",
 			execute: async (toolCallId, input, signal, onUpdate) => {
-				if ((input as ForkSlidesInput).kind === "subject") discardConsumedCollection(ctx);
-				// A replayed part call that is already in a subject video: the ACK it got, the collection untouched.
+				const kind = (input as ForkSlidesInput).kind;
+				if (isPartsKind(kind)) discardConsumedCollection(ctx, kind);
+				// A replayed part call that is already in a subject or recap video: the ACK it got, the collection untouched.
 				const replayed = subjectJobOf(ctx, toolCallId);
 				if (replayed) return toToolResult(replayAck(replayed, toolCallId));
 				const existing = ctx.jobStore.findJobByToolCallId(ctx.chatId, toolCallId);
 				if (!existing) {
 					const problems = slidesInputProblems(input as ForkSlidesInput, ctx);
 					if (problems.length > 0) return invalidInputResult("slides", problems);
-					if ((input as ForkSlidesInput).kind === "subject") {
-						const collected = dispatchSubjectPart(ctx, toolCallId, input as ForkSlidesInput);
+					if (isPartsKind(kind)) {
+						const collected = dispatchSubjectPart(ctx, toolCallId, input as ForkSlidesInput, kind);
 						return typeof collected === "string" ? toToolResult(collected) : invalidInputResult("slides", collected.problems);
 					}
 				}
